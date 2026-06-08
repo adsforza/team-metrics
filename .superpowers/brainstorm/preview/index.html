@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Kanban Flow Dashboard</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+
+  .header { padding: 12px 24px; border-bottom: 1px solid #1e2535; display: flex; align-items: center; gap: 12px; }
+  .header-left { flex-shrink: 0; }
+  .header-left h1 { font-size: 15px; font-weight: 600; color: #f8fafc; }
+  .header-left .sub { font-size: 10px; color: #64748b; margin-top: 1px; }
+  .header-controls { display: flex; align-items: center; gap: 7px; flex-wrap: nowrap; margin-left: auto; }
+
+  .time-range { display: flex; gap: 3px; background: #1e2535; border-radius: 7px; padding: 3px; border: 1px solid #2d3748; }
+  .tr-btn { padding: 4px 9px; border-radius: 4px; font-size: 11px; font-weight: 500; cursor: pointer; border: none; background: transparent; color: #64748b; white-space: nowrap; }
+  .tr-btn.active { background: #3b82f6; color: #fff; }
+
+  .filter-pill { display: flex; align-items: center; gap: 5px; background: #1e2535; border: 1px solid #2d3748; border-radius: 7px; padding: 4px 10px; font-size: 11px; color: #94a3b8; white-space: nowrap; }
+  .filter-pill select { background: transparent; border: none; outline: none; color: #e2e8f0; font-size: 11px; cursor: pointer; max-width: 110px; }
+  .filter-pill select option { background: #1e2535; }
+
+  .sync-badge { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #64748b; background: #1e2535; padding: 5px 10px; border-radius: 20px; border: 1px solid #2d3748; }
+  .sync-dot { width: 6px; height: 6px; background: #22c55e; border-radius: 50%; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  .ai-badge { display: flex; align-items: center; gap: 4px; font-size: 10px; color: #a78bfa; background: #1e1535; border: 1px solid #4c1d95; padding: 3px 8px; border-radius: 20px; white-space: nowrap; }
+
+  .filter-banner { margin: 12px 28px 0; background: #1a2744; border: 1px solid #2d4a8a; border-radius: 8px; padding: 8px 16px; font-size: 12px; color: #93c5fd; display: flex; align-items: center; gap: 8px; }
+  .filter-banner strong { color: #bfdbfe; }
+
+  .main { padding: 16px 28px 28px; display: grid; gap: 16px; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .kpi { background: #1e2535; border-radius: 12px; padding: 16px 18px; border: 1px solid #2d3748; }
+  .kpi .label { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: #64748b; margin-bottom: 7px; }
+  .kpi .value { font-size: 30px; font-weight: 700; line-height: 1; }
+  .kpi .meta { font-size: 11px; color: #64748b; margin-top: 5px; }
+  .kpi .meta.up { color: #22c55e; }
+  .kpi .meta.bad { color: #ef4444; }
+  .kpi-wip .value { color: #60a5fa; }
+  .kpi-tput .value { color: #34d399; }
+  .kpi-ct .value { color: #a78bfa; }
+  .kpi-aging .value { color: #f87171; }
+
+  .charts-row { display: grid; grid-template-columns: 1.6fr 1fr; gap: 12px; }
+  .card { background: #1e2535; border-radius: 12px; padding: 18px; border: 1px solid #2d3748; }
+  .card h3 { font-size: 12px; font-weight: 600; color: #94a3b8; margin-bottom: 3px; }
+  .card .card-sub { font-size: 10px; color: #475569; margin-bottom: 14px; }
+
+  .cfd-chart, .scatter-chart { width: 100%; height: 160px; }
+  .cfd-chart svg, .scatter-chart svg { width: 100%; height: 100%; }
+
+  .bottom-row { display: grid; grid-template-columns: 1fr 1.4fr; gap: 12px; }
+
+  .bars { display: flex; align-items: flex-end; gap: 7px; height: 100px; padding-bottom: 4px; }
+  .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; height: 100%; justify-content: flex-end; }
+  .bar { width: 100%; background: #3b82f6; border-radius: 3px 3px 0 0; min-height: 4px; }
+  .bar-label { font-size: 9px; color: #475569; }
+  .bar-val { font-size: 10px; color: #93c5fd; font-weight: 600; }
+
+  .aging-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .aging-table th { text-align: left; padding: 0 7px 8px; font-size: 9px; text-transform: uppercase; letter-spacing: .06em; color: #475569; font-weight: 500; }
+  .aging-table td { padding: 6px 7px; border-top: 1px solid #2d3748; vertical-align: middle; }
+  .issue-key { color: #60a5fa; font-weight: 600; font-family: monospace; font-size: 10px; }
+  .col-badge { display: inline-block; padding: 1px 7px; border-radius: 20px; font-size: 9px; font-weight: 600; }
+  .col-doing { background: #1d4ed8; color: #bfdbfe; }
+  .col-review { background: #6d28d9; color: #ddd6fe; }
+  .age-pill { display: inline-block; padding: 1px 7px; border-radius: 20px; font-size: 10px; font-weight: 700; }
+  .age-ok { background: #14532d; color: #86efac; }
+  .age-warn { background: #78350f; color: #fcd34d; }
+  .age-bad { background: #7f1d1d; color: #fca5a5; }
+
+  /* TALLA BADGES */
+  .talla { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 5px; font-size: 10px; font-weight: 800; }
+  .talla-S { background: #14532d; color: #86efac; }
+  .talla-M { background: #1e3a5f; color: #93c5fd; }
+  .talla-L { background: #4c1d95; color: #ddd6fe; }
+  .talla-XL { background: #7f1d1d; color: #fca5a5; }
+
+  .legend { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .legend-item { display: flex; align-items: center; gap: 4px; font-size: 10px; color: #64748b; }
+  .legend-dot { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+
+  .section-divider { display: flex; align-items: center; gap: 12px; margin: 4px 0; }
+  .section-divider span { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: #334155; font-weight: 700; white-space: nowrap; }
+  .section-divider::before, .section-divider::after { content:''; flex: 1; height: 1px; background: #1e2535; }
+
+  /* CYCLE TIME BY TALLA */
+  .talla-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+  .talla-stat { background: #161d2e; border-radius: 8px; padding: 12px 14px; border: 1px solid #2d3748; }
+  .talla-stat .t-header { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
+  .talla-stat .t-val { font-size: 22px; font-weight: 700; }
+  .talla-stat .t-meta { font-size: 10px; color: #475569; margin-top: 3px; }
+  .talla-S-val { color: #86efac; }
+  .talla-M-val { color: #93c5fd; }
+  .talla-L-val { color: #c4b5fd; }
+  .talla-XL-val { color: #fca5a5; }
+
+  /* TEAM TABLE */
+  .team-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .team-table th { text-align: left; padding: 0 10px 10px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #475569; font-weight: 500; }
+  .team-table td { padding: 9px 10px; border-top: 1px solid #2d3748; vertical-align: middle; }
+  .team-table tr:hover td { background: #253047; }
+
+  .person-cell { display: flex; align-items: center; gap: 9px; }
+  .avatar { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+  .person-name { font-weight: 500; color: #e2e8f0; font-size: 12px; }
+  .person-role { font-size: 10px; color: #64748b; }
+
+  .mini-bar-wrap { display: flex; align-items: center; gap: 8px; }
+  .mini-bar-bg { flex: 1; height: 6px; background: #2d3748; border-radius: 3px; overflow: hidden; }
+  .mini-bar-fill { height: 100%; border-radius: 3px; }
+  .mini-val { font-size: 11px; color: #94a3b8; width: 28px; text-align: right; flex-shrink: 0; }
+
+  .ct-cell { font-size: 12px; color: #a78bfa; font-weight: 600; }
+  .blocked-cell { font-size: 12px; font-weight: 700; }
+  .blocked-0 { color: #64748b; }
+  .blocked-some { color: #f59e0b; }
+  .blocked-bad { color: #ef4444; }
+
+  /* TALLA MIX — stacked pill */
+  .talla-mix { display: flex; gap: 3px; align-items: center; }
+  .mix-segment { height: 8px; border-radius: 2px; }
+
+  /* RENDIMIENTO SCORE */
+  .score { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 22px; border-radius: 6px; font-size: 11px; font-weight: 800; }
+  .score-a { background: #14532d; color: #86efac; }
+  .score-b { background: #1e3a5f; color: #93c5fd; }
+  .score-c { background: #78350f; color: #fcd34d; }
+
+  .sparkline { display: flex; align-items: flex-end; gap: 2px; height: 20px; }
+  .spark-bar { width: 5px; border-radius: 1px 1px 0 0; background: #3b82f6; opacity: .7; }
+
+  .ai-tag { display: inline-flex; align-items: center; gap: 3px; font-size: 9px; color: #a78bfa; background: #1e1535; border: 1px solid #4c1d95; padding: 1px 6px; border-radius: 10px; margin-left: 4px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <h1>⚡ Kanban Flow Dashboard</h1>
+    <div class="sub">OPS-PROJECT · Tablero: DevOps</div>
+  </div>
+  <div class="header-controls">
+    <div class="time-range">
+      <button class="tr-btn">7d</button>
+      <button class="tr-btn">14d</button>
+      <button class="tr-btn active">30d</button>
+      <button class="tr-btn">90d</button>
+      <button class="tr-btn">Custom</button>
+    </div>
+    <div class="filter-pill">
+      <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="#64748b" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+      <select>
+        <option>Todos</option>
+        <option selected>María G.</option>
+        <option>Tomás R.</option>
+        <option>Lucía P.</option>
+        <option>Andrés M.</option>
+      </select>
+    </div>
+    <div class="filter-pill">
+      <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="#64748b" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+      <select>
+        <option>Todas las tallas</option>
+        <option>S</option>
+        <option>M</option>
+        <option>L</option>
+        <option>XL</option>
+      </select>
+    </div>
+    <div class="filter-pill">
+      <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="#64748b" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+      <select>
+        <option>Todos los estados</option>
+        <option>To Do</option>
+        <option>In Progress</option>
+        <option>In Review</option>
+        <option>In QA</option>
+        <option>Done</option>
+        <option>Blocked</option>
+      </select>
+    </div>
+    <div class="ai-badge">✦ IA clasifica tallas</div>
+    <div class="sync-badge"><div class="sync-dot"></div>Hace 4 min</div>
+  </div>
+</div>
+
+<div class="filter-banner">
+  <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="#93c5fd" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+  Mostrando métricas de <strong>María G.</strong> · últimos <strong>30 días</strong> · todas las tallas · todos los estados
+  &nbsp;·&nbsp;<span style="color:#475569;cursor:pointer;text-decoration:underline">Ver todos</span>
+</div>
+
+<div class="main">
+
+  <!-- KPIs -->
+  <div class="kpi-row">
+    <div class="kpi kpi-wip">
+      <div class="label">WIP Actual</div>
+      <div class="value">4</div>
+      <div class="meta">de 14 totales del equipo</div>
+    </div>
+    <div class="kpi kpi-tput">
+      <div class="label">Throughput</div>
+      <div class="value">8</div>
+      <div class="meta up">2S · 4M · 2L cerrados</div>
+    </div>
+    <div class="kpi kpi-ct">
+      <div class="label">Cycle Time p50 / p85</div>
+      <div class="value">2.8d</div>
+      <div class="meta">p85 = 6.4d · ajustado por talla</div>
+    </div>
+    <div class="kpi kpi-aging">
+      <div class="label">Issues bloqueados</div>
+      <div class="value">1</div>
+      <div class="meta bad">⚠ MY-312 (XL) sin moverse 14d</div>
+    </div>
+  </div>
+
+  <!-- Cycle time by talla -->
+  <div class="card">
+    <h3>Cycle Time por talla <span class="ai-tag">✦ tallas asignadas por IA</span></h3>
+    <div class="card-sub">Tiempo promedio en completar un issue según su complejidad · María G. · 30 días</div>
+    <div class="talla-grid">
+      <div class="talla-stat">
+        <div class="t-header">
+          <span class="talla talla-S">S</span>
+          <span style="font-size:11px;color:#64748b">Simple</span>
+        </div>
+        <div class="t-val talla-S-val">0.9d</div>
+        <div class="t-meta">Equipo: 1.1d · ✓ mejor que promedio</div>
+      </div>
+      <div class="talla-stat">
+        <div class="t-header">
+          <span class="talla talla-M">M</span>
+          <span style="font-size:11px;color:#64748b">Moderado</span>
+        </div>
+        <div class="t-val talla-M-val">2.8d</div>
+        <div class="t-meta">Equipo: 3.2d · ✓ mejor que promedio</div>
+      </div>
+      <div class="talla-stat">
+        <div class="t-header">
+          <span class="talla talla-L">L</span>
+          <span style="font-size:11px;color:#64748b">Complejo</span>
+        </div>
+        <div class="t-val talla-L-val">6.1d</div>
+        <div class="t-meta">Equipo: 5.8d · ↑ levemente más lento</div>
+      </div>
+      <div class="talla-stat">
+        <div class="t-header">
+          <span class="talla talla-XL">XL</span>
+          <span style="font-size:11px;color:#64748b">Muy complejo</span>
+        </div>
+        <div class="t-val talla-XL-val">14d+</div>
+        <div class="t-meta">1 issue activo · en curso</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CFD + Scatterplot -->
+  <div class="charts-row">
+    <div class="card">
+      <h3>Cumulative Flow Diagram</h3>
+      <div class="card-sub">Últimos 30 días · acumulado por columna · María G.</div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#1d4ed8"></div>To Do</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#7c3aed"></div>In Progress</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#0f766e"></div>In Review</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#166534"></div>Done</div>
+      </div>
+      <div class="cfd-chart">
+        <svg viewBox="0 0 400 140" preserveAspectRatio="none">
+          <path d="M0,140 L0,115 Q100,100 200,78 Q300,58 400,36 L400,140 Z" fill="#166534" opacity="0.85"/>
+          <path d="M0,115 L0,90 Q100,80 200,66 Q300,52 400,31 L400,36 Q300,58 200,78 Q100,100 0,115 Z" fill="#0f766e" opacity="0.85"/>
+          <path d="M0,90 L0,64 Q100,60 200,54 Q300,46 400,26 L400,31 Q300,52 200,66 Q100,80 0,90 Z" fill="#7c3aed" opacity="0.85"/>
+          <path d="M0,64 L0,42 Q100,40 200,37 Q300,33 400,20 L400,26 Q300,46 200,54 Q100,60 0,64 Z" fill="#1d4ed8" opacity="0.85"/>
+          <text x="2" y="138" font-size="8" fill="#475569">May 9</text>
+          <text x="185" y="138" font-size="8" fill="#475569">May 25</text>
+          <text x="370" y="138" font-size="8" fill="#475569">Jun 8</text>
+        </svg>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Cycle Time Scatterplot</h3>
+      <div class="card-sub">Coloreado por talla · María G.</div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#86efac;border-radius:50%"></div>S</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#93c5fd;border-radius:50%"></div>M</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#c4b5fd;border-radius:50%"></div>L</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#fca5a5;border-radius:50%"></div>XL</div>
+      </div>
+      <div class="scatter-chart">
+        <svg viewBox="0 0 200 140" preserveAspectRatio="none">
+          <line x1="20" y1="5" x2="20" y2="125" stroke="#2d3748" stroke-width="0.5"/>
+          <line x1="20" y1="125" x2="195" y2="125" stroke="#2d3748" stroke-width="0.5"/>
+          <line x1="20" y1="55" x2="195" y2="55" stroke="#f59e0b" stroke-width="0.8" stroke-dasharray="4,3"/>
+          <text x="23" y="52" font-size="7" fill="#f59e0b">p85</text>
+          <line x1="20" y1="88" x2="195" y2="88" stroke="#a78bfa" stroke-width="0.8" stroke-dasharray="4,3"/>
+          <text x="23" y="85" font-size="7" fill="#a78bfa">p50</text>
+          <!-- S issues (green, low) -->
+          <circle cx="38" cy="115" r="4" fill="#86efac" opacity="0.85"/>
+          <circle cx="65" cy="110" r="4" fill="#86efac" opacity="0.85"/>
+          <!-- M issues (blue, mid) -->
+          <circle cx="55" cy="88" r="4" fill="#93c5fd" opacity="0.85"/>
+          <circle cx="88" cy="82" r="4" fill="#93c5fd" opacity="0.85"/>
+          <circle cx="120" cy="90" r="4" fill="#93c5fd" opacity="0.85"/>
+          <circle cx="148" cy="85" r="4" fill="#93c5fd" opacity="0.85"/>
+          <!-- L issues (purple, higher) -->
+          <circle cx="78" cy="55" r="4" fill="#c4b5fd" opacity="0.85"/>
+          <circle cx="160" cy="50" r="4" fill="#c4b5fd" opacity="0.85"/>
+          <!-- XL outlier (red, top) -->
+          <circle cx="112" cy="18" r="4" fill="#fca5a5" opacity="0.9"/>
+          <text x="0" y="128" font-size="7" fill="#475569">0d</text>
+          <text x="0" y="92" font-size="7" fill="#475569">4d</text>
+          <text x="0" y="58" font-size="7" fill="#475569">8d</text>
+          <text x="0" y="18" font-size="7" fill="#475569">14d</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- Throughput + Aging -->
+  <div class="bottom-row">
+    <div class="card">
+      <h3>Throughput por talla · semanal</h3>
+      <div class="card-sub">Issues cerrados apilados por complejidad · María G.</div>
+      <div class="bars" style="gap:6px">
+        <!-- stacked look via layered bars (simplified) -->
+        <div class="bar-col">
+          <div class="bar-val" style="font-size:9px">2S+1M</div>
+          <div style="width:100%;display:flex;flex-direction:column;gap:1px">
+            <div class="bar" style="height:22px;background:#93c5fd;border-radius:0"></div>
+            <div class="bar" style="height:38px;background:#86efac;border-radius:3px 3px 0 0"></div>
+          </div>
+          <div class="bar-label">May 12</div>
+        </div>
+        <div class="bar-col">
+          <div class="bar-val" style="font-size:9px">1S+2M</div>
+          <div style="width:100%;display:flex;flex-direction:column;gap:1px">
+            <div class="bar" style="height:38px;background:#93c5fd;border-radius:0"></div>
+            <div class="bar" style="height:20px;background:#86efac;border-radius:3px 3px 0 0"></div>
+          </div>
+          <div class="bar-label">May 19</div>
+        </div>
+        <div class="bar-col">
+          <div class="bar-val" style="font-size:9px">1L</div>
+          <div style="width:100%;display:flex;flex-direction:column;gap:1px">
+            <div class="bar" style="height:58px;background:#c4b5fd;border-radius:3px 3px 0 0"></div>
+          </div>
+          <div class="bar-label">May 26</div>
+        </div>
+        <div class="bar-col">
+          <div class="bar-val" style="font-size:9px">1S+2M+2L</div>
+          <div style="width:100%;display:flex;flex-direction:column;gap:1px">
+            <div class="bar" style="height:38px;background:#c4b5fd;border-radius:0"></div>
+            <div class="bar" style="height:28px;background:#93c5fd;border-radius:0"></div>
+            <div class="bar" style="height:18px;background:#86efac;border-radius:3px 3px 0 0"></div>
+          </div>
+          <div class="bar-label">Jun 2</div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Aging WIP</h3>
+      <div class="card-sub">Issues activos · María G. · talla asignada por IA</div>
+      <table class="aging-table">
+        <thead><tr><th>Issue</th><th>Título</th><th>Talla</th><th>Columna</th><th>Días</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="issue-key">MY-312</span></td>
+            <td>Migrar BD a Postgres</td>
+            <td><span class="talla talla-XL">XL</span></td>
+            <td><span class="col-badge col-doing">In Progress</span></td>
+            <td><span class="age-pill age-bad">14d</span></td>
+          </tr>
+          <tr>
+            <td><span class="issue-key">MY-318</span></td>
+            <td>API rate limiting</td>
+            <td><span class="talla talla-M">M</span></td>
+            <td><span class="col-badge col-doing">In Progress</span></td>
+            <td><span class="age-pill age-warn">5d</span></td>
+          </tr>
+          <tr>
+            <td><span class="issue-key">MY-325</span></td>
+            <td>Rediseño login screen</td>
+            <td><span class="talla talla-S">S</span></td>
+            <td><span class="col-badge col-review">In Review</span></td>
+            <td><span class="age-pill age-ok">2d</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TEAM COMPARISON -->
+  <div class="section-divider"><span>Comparativa del equipo · últimos 30 días</span></div>
+
+  <div class="card">
+    <h3>Rendimiento por persona <span class="ai-tag">✦ normalizado por complejidad</span></h3>
+    <div class="card-sub">Throughput · Cycle time p50 · Mix de tallas que maneja · Score de rendimiento ajustado por complejidad</div>
+    <table class="team-table">
+      <thead>
+        <tr>
+          <th>Persona</th>
+          <th>Throughput</th>
+          <th>CT p50</th>
+          <th>Mix de tallas</th>
+          <th>Bloq.</th>
+          <th>Score</th>
+          <th>Últimas 4 sem.</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- María G. highlighted -->
+        <tr style="background:#1a2744">
+          <td>
+            <div class="person-cell">
+              <div class="avatar" style="background:#1d4ed8">MG</div>
+              <div>
+                <div class="person-name">María G. <span style="font-size:9px;background:#1d4ed8;color:#bfdbfe;padding:1px 6px;border-radius:10px;margin-left:4px;">filtrado</span></div>
+                <div class="person-role">Frontend</div>
+              </div>
+            </div>
+          </td>
+          <td><div class="mini-bar-wrap"><div class="mini-bar-bg"><div class="mini-bar-fill" style="width:53%;background:#3b82f6"></div></div><div class="mini-val">8</div></div></td>
+          <td class="ct-cell">2.8d</td>
+          <td>
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <div class="talla-mix">
+                <div class="mix-segment" style="width:18px;background:#86efac" title="S"></div>
+                <div class="mix-segment" style="width:36px;background:#93c5fd" title="M"></div>
+                <div class="mix-segment" style="width:18px;background:#c4b5fd" title="L"></div>
+                <div class="mix-segment" style="width:9px;background:#fca5a5" title="XL"></div>
+              </div>
+              <div style="font-size:9px;color:#475569">2S · 4M · 2L · 1XL</div>
+            </div>
+          </td>
+          <td class="blocked-cell blocked-some">1</td>
+          <td><span class="score score-a">A</span></td>
+          <td><div class="sparkline"><div class="spark-bar" style="height:40%"></div><div class="spark-bar" style="height:60%"></div><div class="spark-bar" style="height:20%"></div><div class="spark-bar" style="height:100%"></div></div></td>
+        </tr>
+        <!-- Tomás R. -->
+        <tr>
+          <td>
+            <div class="person-cell">
+              <div class="avatar" style="background:#7c3aed">TR</div>
+              <div><div class="person-name">Tomás R.</div><div class="person-role">Backend</div></div>
+            </div>
+          </td>
+          <td><div class="mini-bar-wrap"><div class="mini-bar-bg"><div class="mini-bar-fill" style="width:100%;background:#3b82f6"></div></div><div class="mini-val">15</div></div></td>
+          <td class="ct-cell">3.5d</td>
+          <td>
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <div class="talla-mix">
+                <div class="mix-segment" style="width:36px;background:#86efac"></div>
+                <div class="mix-segment" style="width:45px;background:#93c5fd"></div>
+                <div class="mix-segment" style="width:9px;background:#c4b5fd"></div>
+              </div>
+              <div style="font-size:9px;color:#475569">6S · 8M · 1L</div>
+            </div>
+          </td>
+          <td class="blocked-cell blocked-0">0</td>
+          <td><span class="score score-b">B+</span></td>
+          <td><div class="sparkline"><div class="spark-bar" style="height:60%"></div><div class="spark-bar" style="height:80%"></div><div class="spark-bar" style="height:100%"></div><div class="spark-bar" style="height:90%"></div></div></td>
+        </tr>
+        <!-- Lucía P. -->
+        <tr>
+          <td>
+            <div class="person-cell">
+              <div class="avatar" style="background:#0f766e">LP</div>
+              <div><div class="person-name">Lucía P.</div><div class="person-role">Full Stack</div></div>
+            </div>
+          </td>
+          <td><div class="mini-bar-wrap"><div class="mini-bar-bg"><div class="mini-bar-fill" style="width:73%;background:#3b82f6"></div></div><div class="mini-val">11</div></div></td>
+          <td class="ct-cell">4.1d</td>
+          <td>
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <div class="talla-mix">
+                <div class="mix-segment" style="width:9px;background:#86efac"></div>
+                <div class="mix-segment" style="width:27px;background:#93c5fd"></div>
+                <div class="mix-segment" style="width:36px;background:#c4b5fd"></div>
+                <div class="mix-segment" style="width:18px;background:#fca5a5"></div>
+              </div>
+              <div style="font-size:9px;color:#475569">1S · 3M · 4L · 2XL</div>
+            </div>
+          </td>
+          <td class="blocked-cell blocked-bad">2</td>
+          <td><span class="score score-a">A</span></td>
+          <td><div class="sparkline"><div class="spark-bar" style="height:100%"></div><div class="spark-bar" style="height:50%"></div><div class="spark-bar" style="height:70%"></div><div class="spark-bar" style="height:40%"></div></div></td>
+        </tr>
+        <!-- Andrés M. -->
+        <tr>
+          <td>
+            <div class="person-cell">
+              <div class="avatar" style="background:#b45309">AM</div>
+              <div><div class="person-name">Andrés M.</div><div class="person-role">QA</div></div>
+            </div>
+          </td>
+          <td><div class="mini-bar-wrap"><div class="mini-bar-bg"><div class="mini-bar-fill" style="width:46%;background:#3b82f6"></div></div><div class="mini-val">7</div></div></td>
+          <td class="ct-cell">5.2d</td>
+          <td>
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <div class="talla-mix">
+                <div class="mix-segment" style="width:27px;background:#86efac"></div>
+                <div class="mix-segment" style="width:27px;background:#93c5fd"></div>
+                <div class="mix-segment" style="width:9px;background:#c4b5fd"></div>
+              </div>
+              <div style="font-size:9px;color:#475569">3S · 3M · 1L</div>
+            </div>
+          </td>
+          <td class="blocked-cell blocked-some">1</td>
+          <td><span class="score score-c">C</span></td>
+          <td><div class="sparkline"><div class="spark-bar" style="height:30%"></div><div class="spark-bar" style="height:60%"></div><div class="spark-bar" style="height:40%"></div><div class="spark-bar" style="height:55%"></div></div></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+<script>
+  document.querySelectorAll('.tr-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tr-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>

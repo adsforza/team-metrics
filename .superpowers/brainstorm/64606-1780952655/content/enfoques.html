@@ -1,0 +1,40 @@
+<h2>3 enfoques posibles</h2>
+<p class="subtitle">Cada uno tiene diferente complejidad y capacidades</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>React + Express proxy <span style="font-size:0.75em;background:#22c55e;color:white;padding:2px 8px;border-radius:99px;margin-left:8px;">Recomendado</span></h3>
+      <p>El backend en Express guarda el API token de Jira en <code>.env</code> y actúa como proxy. El frontend React llama al backend local, nunca expone credenciales. Gráficos con Recharts.</p>
+      <div class="pros-cons" style="margin-top:12px">
+        <div class="pros"><h4>Pros</h4><ul><li>Simple de arrancar</li><li>Seguro (token en backend)</li><li>Datos siempre frescos de Jira</li></ul></div>
+        <div class="cons"><h4>Contras</h4><ul><li>Depende de conexión a Jira en tiempo real</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>React directo a Jira API (sin backend)</h3>
+      <p>El frontend llama a Jira Cloud directamente desde el browser.</p>
+      <div class="pros-cons" style="margin-top:12px">
+        <div class="pros"><h4>Pros</h4><ul><li>Más simple de configurar</li></ul></div>
+        <div class="cons"><h4>Contras</h4><ul><li>Token expuesto en el browser</li><li>CORS bloqueado por Jira Cloud</li><li>No recomendado</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>React + Express + SQLite (con historial)</h3>
+      <p>Igual que A, pero un job periódico guarda datos en SQLite. El tablero lee del cache local — más rápido y con datos históricos.</p>
+      <div class="pros-cons" style="margin-top:12px">
+        <div class="pros"><h4>Pros</h4><ul><li>Historial propio de métricas</li><li>Rápido (lee de DB local)</li><li>Funciona sin conexión</li></ul></div>
+        <div class="cons"><h4>Contras</h4><ul><li>Más complejo de configurar</li><li>Requiere mantener la DB</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,26 @@
+<h2>¿Dónde va a correr el tablero?</h2>
+<p class="subtitle">Elegí la opción que mejor se adapta a tu contexto</p>
+
+<div class="options">
+  <div class="option" data-choice="web-standalone" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>App web independiente</h3>
+      <p>Una URL propia, separada de Jira. Se abre en el browser como cualquier sitio. Fácil de compartir con stakeholders.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="jira-plugin" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Plugin dentro de Jira</h3>
+      <p>Integrado directamente en Jira como una pantalla más. Requiere desarrollo de Forge o Connect app.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="local" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Herramienta local / interna</h3>
+      <p>Corre en la máquina o red interna del equipo. Sin infraestructura pública, ideal para equipos pequeños.</p>
+    </div>
+  </div>
+</div>

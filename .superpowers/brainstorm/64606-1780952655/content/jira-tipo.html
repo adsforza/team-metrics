@@ -1,0 +1,26 @@
+<h2>¿Qué versión de Jira usás?</h2>
+<p class="subtitle">Esto afecta cómo nos conectamos a la API</p>
+
+<div class="options">
+  <div class="option" data-choice="cloud" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Jira Cloud</h3>
+      <p>Tu URL es algo como <code>miempresa.atlassian.net</code>. API moderna REST v3, autenticación con API token.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="server" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Jira Server / Data Center</h3>
+      <p>Jira instalado en servidores propios. URL interna, autenticación por usuario/contraseña o token.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="no-se" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>No estoy seguro</h3>
+      <p>Puedo ayudarte a detectarlo con la URL que usás para acceder a Jira.</p>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,31 @@
+{"type":"server-started","port":54873,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:54873","screen_dir":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content","state_dir":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/state"}
+{"type":"screen-added","file":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content/metricas.html"}
+{"type":"screen-updated","file":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content/metricas.html"}
+{"type":"screen-updated","file":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content/metricas.html"}
+{"type":"screen-updated","file":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content/metricas.html"}
+{"source":"user-event","type":"click","text":"D\n    \n      Performance individual\n      Tareas completadas por persona, carga de trabajo por miembro","choice":"individual","id":null,"timestamp":1780952762459}
+{"source":"user-event","type":"click","text":"D\n    \n      Performance individual\n      Tareas completadas por persona, carga de trabajo por miembro","choice":"individual","id":null,"timestamp":1780952763800}
+{"source":"user-event","type":"click","text":"D\n    \n      Performance individual\n      Tareas completadas por persona, carga de trabajo por miembro","choice":"individual","id":null,"timestamp":1780952764310}
+{"type":"screen-added","file":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content/plataforma.html"}
+{"type":"screen-updated","file":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content/plataforma.html"}
+{"type":"screen-updated","file":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content/plataforma.html"}
+{"type":"screen-updated","file":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content/plataforma.html"}
+{"type":"screen-added","file":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content/jira-tipo.html"}
+{"type":"screen-updated","file":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content/jira-tipo.html"}
+{"type":"screen-updated","file":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content/jira-tipo.html"}
+{"type":"screen-updated","file":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content/jira-tipo.html"}
+{"type":"screen-added","file":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content/tecnologia.html"}
+{"type":"screen-updated","file":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content/tecnologia.html"}
+{"type":"screen-updated","file":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content/tecnologia.html"}
+{"type":"screen-updated","file":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content/tecnologia.html"}
+{"type":"screen-added","file":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content/scope.html"}
+{"type":"screen-updated","file":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content/scope.html"}
+{"type":"screen-updated","file":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content/scope.html"}
+{"type":"screen-updated","file":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content/scope.html"}
+{"source":"user-event","type":"click","text":"A\n    \n      Un solo proyecto / board\n      El tablero está enfocado en un equipo y su board de Scrum o Kanban.","choice":"uno","id":null,"timestamp":1780953224198}
+{"type":"screen-added","file":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content/enfoques.html"}
+{"type":"screen-updated","file":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content/enfoques.html"}
+{"type":"screen-updated","file":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content/enfoques.html"}
+{"type":"screen-updated","file":"/Users/ale/Desktop/nuevo-proyecto/.superpowers/brainstorm/64606-1780952655/content/enfoques.html"}
+{"source":"user-event","type":"click","text":"C\n    \n      React + Express + SQLite (con historial)\n      Igual que A, pero un job periódico guarda datos en SQLite. El tablero lee del cache local — más rápido y con datos históricos.\n      \n        ProsHistorial propio de métricasRápido (lee de DB local)Funciona sin conexión\n        ContrasMás complejo de configurarRequiere mantener la DB","choice":"c","id":null,"timestamp":1780953289035}
+{"type":"server-stopped","reason":"owner process exited"}

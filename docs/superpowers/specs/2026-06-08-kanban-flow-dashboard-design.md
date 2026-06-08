@@ -1,6 +1,6 @@
-# Kanban Flow Dashboard — Diseño técnico
+# TeamMetrics — Diseño técnico
 **Fecha:** 2026-06-08  
-**Proyecto:** nuevo-proyecto  
+**Proyecto:** team-metrics  
 **Stack:** React + Express + SQLite  
 
 ---
@@ -199,7 +199,7 @@ src/
 ## 8. Estructura de carpetas del proyecto
 
 ```
-nuevo-proyecto/
+team-metrics/
 ├── client/                  # React app (Vite)
 │   ├── src/
 │   └── package.json

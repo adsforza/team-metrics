@@ -1,0 +1,33 @@
+<h2>¿Qué métricas querés ver en el tablero?</h2>
+<p class="subtitle">Seleccioná todas las que te interesen (podés elegir varias)</p>
+
+<div class="options" data-multiselect>
+  <div class="option" data-choice="velocity" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Velocidad del equipo</h3>
+      <p>Story points completados por sprint, tendencia histórica</p>
+    </div>
+  </div>
+  <div class="option" data-choice="cycle-time" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Cycle time / Lead time</h3>
+      <p>Tiempo desde que se crea una tarea hasta que se entrega</p>
+    </div>
+  </div>
+  <div class="option" data-choice="bugs" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Bugs y calidad</h3>
+      <p>Cantidad de bugs abiertos, severidad, tasa de resolución</p>
+    </div>
+  </div>
+  <div class="option" data-choice="individual" onclick="toggleSelect(this)">
+    <div class="letter">D</div>
+    <div class="content">
+      <h3>Performance individual</h3>
+      <p>Tareas completadas por persona, carga de trabajo por miembro</p>
+    </div>
+  </div>
+</div>
