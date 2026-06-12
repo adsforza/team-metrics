@@ -41,21 +41,30 @@ export class JiraClient {
       updatedSince ? `updated >= "${updatedSince}"` : null,
     ].filter(Boolean).join(' AND ');
 
-    while (true) {
-      const { data } = await axios.get(
-        `${this.cfg.baseUrl}/rest/agile/1.0/board/${this.cfg.boardId}/issue`,
-        {
-          auth: this.auth,
-          params: { jql, startAt, maxResults, expand: 'changelog', fields: 'summary,description,status,assignee,created,updated' },
+    try {
+      while (true) {
+        const { data } = await axios.get(
+          `${this.cfg.baseUrl}/rest/agile/1.0/board/${this.cfg.boardId}/issue`,
+          {
+            auth: this.auth,
+            params: { jql, startAt, maxResults, expand: 'changelog', fields: 'summary,description,status,assignee,created,updated' },
+          }
+        );
+
+        const issues: any[] = Array.isArray(data.issues) ? data.issues : [];
+        const total: number = typeof data.total === 'number' ? data.total : 0;
+
+        for (const issue of issues) {
+          results.push(this.mapIssue(issue));
         }
-      );
 
-      for (const issue of data.issues) {
-        results.push(this.mapIssue(issue));
+        if (issues.length === 0 || startAt + issues.length >= total) break;
+        startAt += maxResults;
       }
-
-      if (startAt + data.issues.length >= data.total) break;
-      startAt += maxResults;
+    } catch (err: any) {
+      const status = err.response?.status;
+      const msg = err.response?.data?.errorMessages?.join(', ') ?? err.message;
+      throw new Error(`Jira API error${status ? ` (${status})` : ''}: ${msg}`);
     }
 
     return results;
@@ -98,11 +107,18 @@ export class JiraClient {
 }
 
 export function createJiraClient(): JiraClient {
+  const required = ['JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN', 'JIRA_PROJECT_KEY', 'JIRA_BOARD_ID'] as const;
+  for (const key of required) {
+    if (!process.env[key]) throw new Error(`Missing required env var: ${key}`);
+  }
+  const boardId = Number(process.env.JIRA_BOARD_ID);
+  if (isNaN(boardId)) throw new Error('JIRA_BOARD_ID must be a valid number');
+
   return new JiraClient({
     baseUrl: process.env.JIRA_BASE_URL!,
     email: process.env.JIRA_EMAIL!,
     apiToken: process.env.JIRA_API_TOKEN!,
     projectKey: process.env.JIRA_PROJECT_KEY!,
-    boardId: Number(process.env.JIRA_BOARD_ID!),
+    boardId,
   });
 }
