@@ -15,17 +15,10 @@ interface Props {
   kpis: KPIMetrics | null;
 }
 
+// ScatterPlot requires ct_days per issue from the API (not yet implemented server-side).
+// Shows reference lines for p50/p85 with empty data until that field is added.
 export function ScatterPlot({ issues, kpis }: Props) {
-  const points: ScatterPoint[] = issues
-    .filter(i => i.status === 'Done')
-    .map((issue, idx) => ({
-      x: idx,
-      y: Math.random() * 10, // placeholder: server no envía ct_days aún
-      talla: issue.talla,
-      id: issue.id,
-    }));
-
-  const byTalla = (t: Talla | null) => points.filter(p => p.talla === t);
+  const doneCount = issues.filter(i => i.status === 'Done').length;
 
   return (
     <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 h-full">
@@ -42,7 +35,7 @@ export function ScatterPlot({ issues, kpis }: Props) {
       <ResponsiveContainer width="100%" height={160}>
         <ScatterChart>
           <XAxis dataKey="x" hide />
-          <YAxis dataKey="y" tick={{ fontSize: 10, fill: '#475569' }} unit="d" />
+          <YAxis dataKey="y" tick={{ fontSize: 10, fill: '#475569' }} unit="d" domain={[0, kpis?.cycle_time_p85 ? kpis.cycle_time_p85 * 1.3 : 10]} />
           <Tooltip
             contentStyle={{ background: '#1e2535', border: '1px solid #2d3748', borderRadius: 8, fontSize: 11 }}
             formatter={(v: unknown) => [`${Number(v).toFixed(1)}d`, 'Cycle Time']}
@@ -63,11 +56,14 @@ export function ScatterPlot({ issues, kpis }: Props) {
               label={{ value: 'p85', fill: '#f59e0b', fontSize: 9 }}
             />
           )}
-          {(['S', 'M', 'L', 'XL'] as Talla[]).map(t => (
-            <Scatter key={t} data={byTalla(t)} fill={TALLA_COLOR[t]} fillOpacity={0.85} r={4} />
-          ))}
         </ScatterChart>
       </ResponsiveContainer>
+      {doneCount === 0 && (
+        <p className="text-[10px] text-slate-600 text-center -mt-2">Sin issues completados en el período</p>
+      )}
+      {doneCount > 0 && (
+        <p className="text-[10px] text-slate-600 text-center -mt-2">{doneCount} issues · datos por issue disponibles en próxima versión</p>
+      )}
     </div>
   );
 }

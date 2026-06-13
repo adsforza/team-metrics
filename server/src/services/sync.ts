@@ -115,7 +115,8 @@ export async function runSync(db: Database.Database): Promise<SyncResult> {
 }
 
 export function startSyncJob(): void {
-  const intervalMinutes = Number(process.env.SYNC_INTERVAL_MINUTES ?? 30);
+  const raw = Number(process.env.SYNC_INTERVAL_MINUTES ?? 30);
+  const intervalMinutes = Number.isNaN(raw) ? 30 : Math.max(1, Math.min(59, raw));
   const cronExpr = `*/${intervalMinutes} * * * *`;
   console.log(`Sync job scheduled: every ${intervalMinutes} minutes`);
   cron.schedule(cronExpr, () => {

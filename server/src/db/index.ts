@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import fs from 'fs';
 import path from 'path';
 import { applySchema } from './schema';
 
@@ -12,7 +13,6 @@ export function getDb(): Database.Database {
 }
 
 export function initDb(dbPath = DB_PATH): Database.Database {
-  const fs = require('fs');
   const dir = path.dirname(dbPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   _db = new Database(dbPath);
