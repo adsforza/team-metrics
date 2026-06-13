@@ -30,31 +30,37 @@ export function resetClient(): void {
 export async function classifyTalla(title: string, description: string): Promise<TallaResult> {
   const model = process.env.CLAUDE_MODEL || 'claude-haiku-4-5';
 
-  const msg = await getClient().messages.create({
-    model,
-    max_tokens: 128,
-    messages: [{
-      role: 'user',
-      content: `${PROMPT_SYSTEM}\n\nIssue: ${title}\nDescripción: ${description.slice(0, 500)}`,
-    }],
-  });
-
-  const text = msg.content.find(b => b.type === 'text')?.text ?? '{}';
-  let parsed: { talla?: string; confidence?: number; razon?: string };
-
   try {
-    parsed = JSON.parse(text);
-  } catch {
-    return { talla: null, confidence: 0, razon: 'parse error' };
+    const msg = await getClient().messages.create({
+      model,
+      max_tokens: 128,
+      system: PROMPT_SYSTEM,
+      messages: [{
+        role: 'user',
+        content: `Issue: ${title}\nDescripción: ${description.slice(0, 500)}`,
+      }],
+    });
+
+    const text = msg.content.find(b => b.type === 'text')?.text ?? '{}';
+    let parsed: { talla?: string; confidence?: number; razon?: string };
+
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return { talla: null, confidence: 0, razon: 'parse error' };
+    }
+
+    const confidence = parsed.confidence ?? 0;
+    const rawTalla = parsed.talla as Talla;
+    const validTallas: Talla[] = ['S', 'M', 'L', 'XL'];
+
+    return {
+      talla: confidence >= 0.6 && validTallas.includes(rawTalla) ? rawTalla : null,
+      confidence,
+      razon: parsed.razon ?? '',
+    };
+  } catch (err: any) {
+    console.error('Claude API error:', err.message);
+    return { talla: null, confidence: 0, razon: 'api error' };
   }
-
-  const confidence = parsed.confidence ?? 0;
-  const rawTalla = parsed.talla as Talla;
-  const validTallas: Talla[] = ['S', 'M', 'L', 'XL'];
-
-  return {
-    talla: confidence >= 0.6 && validTallas.includes(rawTalla) ? rawTalla : null,
-    confidence,
-    razon: parsed.razon ?? '',
-  };
 }
