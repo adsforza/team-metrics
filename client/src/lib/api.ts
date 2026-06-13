@@ -1,0 +1,30 @@
+import type { KPIMetrics, TallaMetric, CFDPoint, ThroughputWeek, AgingIssue, PersonMetrics, Issue, TeamMember } from '../../../server/src/types';
+
+export type { KPIMetrics, TallaMetric, CFDPoint, ThroughputWeek, AgingIssue, PersonMetrics, Issue, TeamMember };
+
+function buildQuery(params: Record<string, string | undefined>): string {
+  const q = Object.entries(params)
+    .filter(([, v]) => v !== undefined && v !== '')
+    .map(([k, v]) => `${k}=${encodeURIComponent(v!)}`)
+    .join('&');
+  return q ? '?' + q : '';
+}
+
+async function get<T>(path: string, params: Record<string, string | undefined> = {}): Promise<T> {
+  const res = await fetch('/api' + path + buildQuery(params));
+  if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
+  return res.json();
+}
+
+export const api = {
+  metrics: (p: Record<string, string | undefined> = {}) => get<KPIMetrics>('/metrics', p),
+  metricsByTalla: (p: Record<string, string | undefined> = {}) => get<TallaMetric[]>('/metrics/by-talla', p),
+  metricsCFD: (p: Record<string, string | undefined> = {}) => get<CFDPoint[]>('/metrics/cfd', p),
+  metricsThroughput: (p: Record<string, string | undefined> = {}) => get<ThroughputWeek[]>('/metrics/throughput', p),
+  metricsAging: (p: Record<string, string | undefined> = {}) => get<AgingIssue[]>('/metrics/aging', p),
+  team: (p: Record<string, string | undefined> = {}) => get<PersonMetrics[]>('/team', p),
+  teamMembers: () => get<TeamMember[]>('/team/members'),
+  issues: (p: Record<string, string | undefined> = {}) => get<Issue[]>('/issues', p),
+  syncNow: () => fetch('/api/sync', { method: 'POST' }).then(r => r.json()),
+  syncStatus: () => get<unknown>('/sync/status'),
+};
