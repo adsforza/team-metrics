@@ -41,14 +41,15 @@ function getCycleTimes(db: Database.Database, params: FilterParams): number[] {
 
   const rows = db.prepare(`
     SELECT
-      t_start.transitioned_at AS start_at,
-      t_end.transitioned_at   AS end_at
+      MIN(t_start.transitioned_at) AS start_at,
+      t_end.transitioned_at        AS end_at
     FROM issues i
     JOIN transitions t_start ON t_start.issue_id = i.id AND t_start.to_status = 'In Progress'
     JOIN transitions t_end   ON t_end.issue_id   = i.id AND t_end.to_status   = 'Done'
     ${where ? where.replace('WHERE', 'WHERE') : 'WHERE 1=1'}
       AND t_end.transitioned_at >= ? AND t_end.transitioned_at <= ?
-    ORDER BY t_start.transitioned_at
+    GROUP BY i.id, t_end.transitioned_at
+    ORDER BY start_at
   `).all(...args, fromDate + 'T00:00:00Z', toDate + 'T23:59:59Z') as any[];
 
   return rows
@@ -74,14 +75,15 @@ export function getKPIs(db: Database.Database, params: FilterParams): KPIMetrics
   `).get(fromDate + 'T00:00:00Z', toDate + 'T23:59:59Z', ...(params.assignee ? [params.assignee] : [])) as any;
 
   const cycleTimes = getCycleTimes(db, params);
-  const agingThreshold = Number(process.env.AGING_THRESHOLD_DAYS ?? 7);
+  const agingThreshold = Math.max(1, parseInt(process.env.AGING_THRESHOLD_DAYS ?? '7', 10) || 7);
+  const agingCutoff = new Date(Date.now() - agingThreshold * 24 * 60 * 60 * 1000).toISOString();
 
   const blockedRow = db.prepare(`
     SELECT COUNT(*) as count FROM issues i
     WHERE i.status NOT IN ('Done','To Do')
-      AND i.last_transition_at <= datetime('now', '-${agingThreshold} days')
+      AND i.last_transition_at <= ?
       ${params.assignee ? 'AND i.assignee_id = ?' : ''}
-  `).get(...(params.assignee ? [params.assignee] : [])) as any;
+  `).get(agingCutoff, ...(params.assignee ? [params.assignee] : [])) as any;
 
   return {
     wip: wipRow.count,
@@ -113,32 +115,42 @@ export function getCFD(db: Database.Database, params: FilterParams): CFDPoint[] 
   const toDate = params.to ?? new Date().toISOString().slice(0, 10);
 
   const statuses = ['To Do', 'In Progress', 'In Review', 'In QA', 'Done'];
+  const statusKeys: Record<string, keyof CFDPoint> = {
+    'To Do': 'todo',
+    'In Progress': 'in_progress',
+    'In Review': 'in_review',
+    'In QA': 'in_qa',
+    'Done': 'done',
+  };
+
   const points: CFDPoint[] = [];
 
-  let cursor = new Date(fromDate);
-  const end = new Date(toDate);
+  const run = db.transaction(() => {
+    let cursor = new Date(fromDate);
+    const end = new Date(toDate);
 
-  while (cursor <= end) {
-    const dateStr = cursor.toISOString();
-    const row: any = { date: cursor.toISOString().slice(0, 10), todo: 0, in_progress: 0, in_review: 0, in_qa: 0, done: 0 };
+    while (cursor <= end) {
+      const dateStr = cursor.toISOString().slice(0, 10) + 'T23:59:59Z';
+      const row: CFDPoint = { date: cursor.toISOString().slice(0, 10), todo: 0, in_progress: 0, in_review: 0, in_qa: 0, done: 0 };
 
-    for (const status of statuses) {
-      const count = (db.prepare(`
-        SELECT COUNT(*) as c FROM issues i WHERE i.created_at <= ?
-          AND (i.status = ? OR EXISTS (
-            SELECT 1 FROM transitions t WHERE t.issue_id = i.id AND t.to_status = ? AND t.transitioned_at <= ?
-          ))
-          ${params.assignee ? 'AND i.assignee_id = ?' : ''}
-      `).get(dateStr, status, status, dateStr, ...(params.assignee ? [params.assignee] : [])) as any).c;
+      for (const status of statuses) {
+        const count = (db.prepare(`
+          SELECT COUNT(*) as c FROM issues i WHERE date(i.created_at) <= date(?)
+            AND (i.status = ? OR EXISTS (
+              SELECT 1 FROM transitions t WHERE t.issue_id = i.id AND t.to_status = ? AND t.transitioned_at <= ?
+            ))
+            ${params.assignee ? 'AND i.assignee_id = ?' : ''}
+        `).get(dateStr, status, status, dateStr, ...(params.assignee ? [params.assignee] : [])) as any).c;
 
-      const key = status.toLowerCase().replace(/ /g, '_');
-      row[key] = count;
+        (row as any)[statusKeys[status]] = count;
+      }
+
+      points.push(row);
+      cursor.setDate(cursor.getDate() + 1);
     }
+  });
 
-    points.push(row);
-    cursor.setDate(cursor.getDate() + 1);
-  }
-
+  run();
   return points;
 }
 
