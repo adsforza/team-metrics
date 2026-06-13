@@ -17,6 +17,12 @@ app.use('/api/metrics', metricsRouter);
 app.use('/api/team', teamRouter);
 app.use('/api/sync', syncRouter);
 
+// Global error handler — catches any error propagated via next(err)
+app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('API error:', err.message);
+  res.status(500).json({ error: err.message });
+});
+
 if (require.main === module) {
   initDb();
   startSyncJob();
