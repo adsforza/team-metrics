@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import Database from 'better-sqlite3';
 import { getDb } from '../db/index';
-import { createJiraClient } from './jira';
+import { createJiraClients } from './jira';
 import { classifyTalla } from './claude';
 
 export interface SyncResult {
@@ -20,9 +20,13 @@ export async function runSync(db: Database.Database): Promise<SyncResult> {
   let classified_count = 0;
 
   try {
-    const lastSync = (db.prepare(`SELECT MAX(finished_at) as last FROM sync_log WHERE error IS NULL`).get() as any)?.last;
-    const client = createJiraClient();
-    const issues = await client.fetchIssues(lastSync ?? undefined);
+    const clients = createJiraClients();
+    const syncedAt = new Date().toISOString();
+    const issueArrays = await Promise.all(clients.map(c => {
+      const row = db.prepare(`SELECT last_synced_at FROM board_sync WHERE board_id = ?`).get(c.boardId) as any;
+      return c.fetchIssues(row?.last_synced_at ?? undefined);
+    }));
+    const issues = issueArrays.flat();
 
     // Phase 1: Async classification with error isolation per issue
     interface ClassifiedIssue {
@@ -40,6 +44,7 @@ export async function runSync(db: Database.Database): Promise<SyncResult> {
 
       if (needsClassification) {
         try {
+          await new Promise(r => setTimeout(r, 8000)); // ~7 RPM (2500 TPM / ~300 tokens por request)
           const result = await classifyTalla(issue.title, issue.description);
           talla = result.talla;
           talla_confidence = result.confidence;
@@ -101,6 +106,13 @@ export async function runSync(db: Database.Database): Promise<SyncResult> {
     });
 
     upsertBatch();
+
+    // Update per-board last sync timestamp
+    for (const c of clients) {
+      db.prepare(`INSERT INTO board_sync (board_id, last_synced_at) VALUES (?, ?)
+        ON CONFLICT(board_id) DO UPDATE SET last_synced_at=excluded.last_synced_at`)
+        .run(c.boardId, syncedAt);
+    }
 
     db.prepare(`UPDATE sync_log SET finished_at=?, synced_count=?, classified_count=? WHERE id=?`)
       .run(new Date().toISOString(), synced_count, classified_count, logId);

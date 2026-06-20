@@ -1,6 +1,7 @@
 import type { PersonMetrics } from '../../lib/api';
 import { formatDays, TALLA_COLOR, SCORE_BG } from '../../lib/formatters';
 import type { Talla } from '../../../../server/src/types';
+import { InfoTooltip } from '../InfoTooltip/InfoTooltip';
 
 const TALLAS: Talla[] = ['S', 'M', 'L', 'XL'];
 
@@ -53,6 +54,7 @@ export function TeamTable({ team, loading }: Props) {
     <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
       <div className="flex items-center gap-2 mb-1">
         <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Rendimiento por persona</h3>
+        <InfoTooltip text="Score A/B/C/D por cuartil: se ordena a cada persona por throughput ponderado por talla (S=1, M=2, L=4, XL=8) dividido por su cycle time p50, y se reparte en cuartiles. A = cuartil superior del equipo, D = inferior. Compara dentro del equipo, no contra un estándar absoluto." />
         <span className="text-xs text-purple-400 bg-purple-950 border border-purple-800 px-2 py-0.5 rounded-full">✦ normalizado por complejidad</span>
       </div>
       <p className="text-xs text-slate-600 mb-4">Throughput · Cycle time p50 · Mix de tallas · Score ajustado</p>
@@ -66,13 +68,48 @@ export function TeamTable({ team, loading }: Props) {
         <table className="w-full text-xs">
           <thead>
             <tr className="text-slate-500 uppercase tracking-wide text-[10px]">
-              <th className="text-left pb-2">Persona</th>
-              <th className="text-left pb-2">Throughput</th>
-              <th className="text-left pb-2">CT p50</th>
-              <th className="text-left pb-2 min-w-[120px]">Mix de tallas</th>
-              <th className="text-center pb-2">Bloq.</th>
-              <th className="text-center pb-2">Score</th>
-              <th className="text-center pb-2">4 sem.</th>
+              <th className="text-left pb-2">
+                <span className="inline-flex items-center gap-1">
+                  Persona
+                  <InfoTooltip text="Miembro del equipo, según el assignee de Jira." />
+                </span>
+              </th>
+              <th className="text-left pb-2">
+                <span className="inline-flex items-center gap-1">
+                  Throughput
+                  <InfoTooltip text="Cantidad de issues que esa persona llevó a Done dentro del rango de fechas filtrado." />
+                </span>
+              </th>
+              <th className="text-left pb-2">
+                <span className="inline-flex items-center gap-1">
+                  CT p50
+                  <InfoTooltip text="Cycle time mediano (p50) de los issues Done de esa persona: días entre que el issue entra a In Progress y llega a Done." />
+                </span>
+              </th>
+              <th className="text-left pb-2 min-w-[120px]">
+                <span className="inline-flex items-center gap-1">
+                  Mix de tallas
+                  <InfoTooltip text="Distribución S/M/L/XL de los issues Done de esa persona, según la talla que clasificó la IA." />
+                </span>
+              </th>
+              <th className="text-center pb-2">
+                <span className="inline-flex items-center gap-1">
+                  Bloq.
+                  <InfoTooltip text="Issues activos de esa persona sin ningún cambio de estado hace más de AGING_THRESHOLD_DAYS (7 días por defecto)." />
+                </span>
+              </th>
+              <th className="text-center pb-2">
+                <span className="inline-flex items-center gap-1">
+                  Score
+                  <InfoTooltip text="Cuartil A/B/C/D: throughput ponderado por talla (S=1, M=2, L=4, XL=8) dividido por cycle time p50, comparado contra el resto del equipo. A = cuartil superior, D = inferior." />
+                </span>
+              </th>
+              <th className="text-center pb-2">
+                <span className="inline-flex items-center gap-1">
+                  4 sem.
+                  <InfoTooltip text="Throughput semanal de esa persona en las últimas 4 semanas, de la más vieja a la más reciente, para ver si está acelerando o frenando." />
+                </span>
+              </th>
             </tr>
           </thead>
           <tbody>

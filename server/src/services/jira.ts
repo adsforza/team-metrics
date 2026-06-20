@@ -26,9 +26,11 @@ export interface JiraIssueRaw {
 
 export class JiraClient {
   private auth: { username: string; password: string };
+  readonly boardId: number;
 
   constructor(private cfg: JiraConfig) {
     this.auth = { username: cfg.email, password: cfg.apiToken };
+    this.boardId = cfg.boardId;
   }
 
   async fetchIssues(updatedSince?: string): Promise<JiraIssueRaw[]> {
@@ -38,7 +40,7 @@ export class JiraClient {
 
     const jql = [
       `project = ${this.cfg.projectKey}`,
-      updatedSince ? `updated >= "${updatedSince}"` : null,
+      updatedSince ? `updated >= "${updatedSince.replace('T', ' ').substring(0, 16)}"` : null,
     ].filter(Boolean).join(' AND ');
 
     try {
@@ -106,19 +108,22 @@ export class JiraClient {
   }
 }
 
-export function createJiraClient(): JiraClient {
-  const required = ['JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN', 'JIRA_PROJECT_KEY', 'JIRA_BOARD_ID'] as const;
+export function createJiraClients(): JiraClient[] {
+  const required = ['JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN', 'JIRA_PROJECT_KEY'] as const;
   for (const key of required) {
     if (!process.env[key]) throw new Error(`Missing required env var: ${key}`);
   }
-  const boardId = Number(process.env.JIRA_BOARD_ID);
-  if (isNaN(boardId)) throw new Error('JIRA_BOARD_ID must be a valid number');
 
-  return new JiraClient({
+  // Supports JIRA_BOARD_IDS (comma-separated) or legacy JIRA_BOARD_ID
+  const raw = process.env.JIRA_BOARD_IDS ?? process.env.JIRA_BOARD_ID ?? '';
+  const boardIds = raw.split(',').map(s => Number(s.trim())).filter(n => !isNaN(n) && n > 0);
+  if (boardIds.length === 0) throw new Error('Set JIRA_BOARD_IDS (comma-separated board IDs) in .env');
+
+  return boardIds.map(boardId => new JiraClient({
     baseUrl: process.env.JIRA_BASE_URL!,
     email: process.env.JIRA_EMAIL!,
     apiToken: process.env.JIRA_API_TOKEN!,
     projectKey: process.env.JIRA_PROJECT_KEY!,
     boardId,
-  });
+  }));
 }

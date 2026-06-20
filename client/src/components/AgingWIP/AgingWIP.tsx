@@ -1,6 +1,7 @@
 import type { AgingIssue } from '../../lib/api';
 import { agePillClass, TALLA_BG } from '../../lib/formatters';
 import type { Talla } from '../../../../server/src/types';
+import { InfoTooltip } from '../InfoTooltip/InfoTooltip';
 
 interface Props {
   issues: AgingIssue[];
@@ -9,7 +10,10 @@ interface Props {
 export function AgingWIP({ issues }: Props) {
   return (
     <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
-      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Aging WIP</h3>
+      <div className="flex items-center gap-1.5 mb-1">
+        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Aging WIP</h3>
+        <InfoTooltip text="Issues activos (no Done/Cancelado) ordenados por días sin ningún cambio de estado. Útil para detectar trabajo estancado, no solo lento." />
+      </div>
       <p className="text-xs text-slate-600 mb-4">Issues sin movimiento · ordenados por días</p>
       <table className="w-full text-xs">
         <thead>

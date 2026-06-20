@@ -15,7 +15,14 @@ export interface MetricsData {
 
 export function useMetrics(): MetricsData {
   const toQueryParams = useFilters(s => s.toQueryParams);
-  const filters = useFilters(s => ({ timeRange: s.timeRange, assignee: s.assignee, talla: s.talla, status: s.status }));
+  const filters = useFilters(s => ({
+    timeRange: s.timeRange,
+    customFrom: s.customFrom,
+    customTo: s.customTo,
+    assignee: s.assignee,
+    talla: s.talla,
+    status: s.status,
+  }));
 
   const [data, setData] = useState<MetricsData>({
     kpis: null, byTalla: [], cfd: [], throughput: [], aging: [], loading: true, error: null,
@@ -36,7 +43,7 @@ export function useMetrics(): MetricsData {
     }).catch(err => {
       setData(d => ({ ...d, loading: false, error: (err as Error).message }));
     });
-  }, [filters.timeRange, filters.assignee, filters.talla, filters.status]);
+  }, [filters.timeRange, filters.customFrom, filters.customTo, filters.assignee, filters.talla, filters.status]);
 
   return data;
 }

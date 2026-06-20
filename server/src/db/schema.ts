@@ -44,5 +44,10 @@ export function applySchema(db: Database.Database): void {
       classified_count INTEGER NOT NULL DEFAULT 0,
       error            TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS board_sync (
+      board_id      INTEGER PRIMARY KEY,
+      last_synced_at TEXT NOT NULL
+    );
   `);
 }

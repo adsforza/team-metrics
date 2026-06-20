@@ -1,10 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { applySchema } from '../db/schema';
 import { runSync } from './sync';
 
 vi.mock('./jira', () => ({
-  createJiraClient: () => ({
+  createJiraClients: () => [{
+    boardId: 1,
     fetchIssues: vi.fn().mockResolvedValue([{
       id: 'OPS-1',
       title: 'Test issue',
@@ -17,7 +18,7 @@ vi.mock('./jira', () => ({
         { from_status: 'To Do', to_status: 'In Progress', transitioned_at: '2026-01-02T00:00:00.000Z' },
       ],
     }]),
-  }),
+  }],
 }));
 
 vi.mock('./claude', () => ({
@@ -30,10 +31,18 @@ describe('runSync', () => {
   beforeEach(() => {
     db = new Database(':memory:');
     applySchema(db);
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('upserts issues and transitions into DB', async () => {
-    const result = await runSync(db);
+    // runSync sleeps 8s per issue to respetar el rate limit de Gemini antes de clasificar
+    const resultPromise = runSync(db);
+    await vi.runAllTimersAsync();
+    const result = await resultPromise;
     expect(result.synced_count).toBe(1);
     expect(result.classified_count).toBe(1);
 
@@ -47,7 +56,9 @@ describe('runSync', () => {
   });
 
   it('writes a sync_log entry', async () => {
-    await runSync(db);
+    const resultPromise = runSync(db);
+    await vi.runAllTimersAsync();
+    await resultPromise;
     const log = db.prepare('SELECT * FROM sync_log ORDER BY id DESC LIMIT 1').get() as any;
     expect(log.synced_count).toBe(1);
     expect(log.error).toBeNull();

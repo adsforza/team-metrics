@@ -1,4 +1,8 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import path from 'path';
+// Look for .env in server/ first, then parent directory
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 import express from 'express';
 import cors from 'cors';
 import { initDb } from './db/index';

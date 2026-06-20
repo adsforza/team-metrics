@@ -13,6 +13,7 @@ export interface Issue {
   updated_at: string;
   synced_at: string;
   last_transition_at: string | null;
+  ct_days: number | null;
 }
 
 export interface Transition {

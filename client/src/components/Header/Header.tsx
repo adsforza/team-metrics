@@ -8,17 +8,21 @@ import { api } from '../../lib/api';
 import { useState } from 'react';
 
 export function Header() {
-  const { assignee, talla, status, timeRange } = useFilters();
+  const { assignee, talla, status, timeRange, customFrom, customTo } = useFilters();
   const { members } = useTeam();
   const [syncing, setSyncing] = useState(false);
   const assigneeName = members.find(m => m.id === assignee)?.display_name;
   const hasFilter = !!(assignee || talla || status);
 
+  const rangeLabel = timeRange === 'custom' && customFrom && customTo
+    ? `${customFrom} → ${customTo}`
+    : `últimos ${timeRange}`;
+
   const activeParts = [
     assigneeName && `${assigneeName}`,
     talla && `talla ${talla}`,
     status && status,
-    `últimos ${timeRange}`,
+    rangeLabel,
   ].filter(Boolean).join(' · ');
 
   return (

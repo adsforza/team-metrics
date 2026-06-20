@@ -1,19 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-let mockCreateFn: any;
+let mockGenerateContent: any;
 
-vi.mock('@anthropic-ai/sdk', () => {
+vi.mock('@google/generative-ai', () => {
   return {
-    default: vi.fn().mockImplementation(() => ({
-      messages: {
-        create: vi.fn().mockImplementation(() => mockCreateFn()),
-      },
+    GoogleGenerativeAI: vi.fn().mockImplementation(() => ({
+      getGenerativeModel: () => ({
+        generateContent: (...args: any[]) => mockGenerateContent(...args),
+      }),
     })),
   };
 });
 
 // Need to import after mock setup
-import Anthropic from '@anthropic-ai/sdk';
 import { classifyTalla, resetClient } from './claude';
 
 describe('classifyTalla', () => {
@@ -23,8 +22,8 @@ describe('classifyTalla', () => {
   });
 
   it('returns talla and confidence from Claude response', async () => {
-    mockCreateFn = () => Promise.resolve({
-      content: [{ type: 'text', text: '{"talla":"M","confidence":0.9,"razon":"Impacta 2 servicios"}' }],
+    mockGenerateContent = () => Promise.resolve({
+      response: { text: () => '[{"talla":"M","confidence":0.9}]' },
     });
 
     const result = await classifyTalla('Deploy new auth service', 'Update the auth service to use OAuth2. Requires changes in 2 microservices.');
@@ -33,8 +32,8 @@ describe('classifyTalla', () => {
   });
 
   it('returns null talla when confidence < 0.6', async () => {
-    mockCreateFn = () => Promise.resolve({
-      content: [{ type: 'text', text: '{"talla":"L","confidence":0.4,"razon":"unclear"}' }],
+    mockGenerateContent = () => Promise.resolve({
+      response: { text: () => '[{"talla":"L","confidence":0.4}]' },
     });
 
     const result = await classifyTalla('Vague task', '');
