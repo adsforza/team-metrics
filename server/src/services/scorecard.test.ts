@@ -119,4 +119,16 @@ describe('getTeamScorecard', () => {
     expect(sc.members[0].flow.value).not.toBeNull();
     expect(Number.isNaN(sc.members[0].flow.value as number)).toBe(false);
   });
+
+  it('respects the talla filter for delivery', () => {
+    // Seed one M (weight 2) and one L (weight 4) — both completed in the current window.
+    // With talla='M', only the M issue should count → delivery = 2.
+    seedIssue(db, 'A-1', 'u1', 'M', '2026-06-08T00:00:00Z',
+      [['In Progress', '2026-06-09T09:00:00Z'], ['Done', '2026-06-10T09:00:00Z']]);
+    seedIssue(db, 'A-2', 'u1', 'L', '2026-06-08T00:00:00Z',
+      [['In Progress', '2026-06-09T09:00:00Z'], ['Done', '2026-06-11T09:00:00Z']]);
+    const sc = getTeamScorecard(db, { from: '2026-06-08', to: '2026-06-14', talla: 'M' });
+    expect(sc.members[0].delivery.value).toBe(2);
+    expect(sc.team.delivery.value).toBe(2);
+  });
 });

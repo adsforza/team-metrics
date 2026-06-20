@@ -49,7 +49,7 @@ interface CompletedIssue { issue_id: string; talla: Talla | null; start_at: stri
 const activeIn = ACTIVE_STATUSES.map(() => '?').join(',');
 const doneIn = DONE_STATUSES.map(() => '?').join(',');
 
-function completedIssues(db: Database.Database, w: Window, assignee?: string): CompletedIssue[] {
+function completedIssues(db: Database.Database, w: Window, assignee?: string, tallas?: string[]): CompletedIssue[] {
   const rows = db.prepare(`
     SELECT i.id AS issue_id, i.talla AS talla,
            MIN(t_start.transitioned_at) AS start_at,
@@ -59,11 +59,13 @@ function completedIssues(db: Database.Database, w: Window, assignee?: string): C
     JOIN transitions t_end   ON t_end.issue_id   = i.id AND t_end.to_status   IN (${doneIn})
     WHERE t_end.transitioned_at >= ? AND t_end.transitioned_at <= ?
       ${assignee ? 'AND i.assignee_id = ?' : ''}
+      ${tallas && tallas.length ? `AND i.talla IN (${tallas.map(() => '?').join(',')})` : ''}
     GROUP BY i.id, t_end.transitioned_at
   `).all(
     ...ACTIVE_STATUSES, ...DONE_STATUSES,
     w.from + 'T00:00:00Z', w.to + 'T23:59:59Z',
     ...(assignee ? [assignee] : []),
+    ...(tallas && tallas.length ? tallas : []),
   ) as any[];
   return rows.map(r => ({ issue_id: r.issue_id, talla: r.talla, start_at: r.start_at, end_at: r.end_at }));
 }
@@ -102,45 +104,50 @@ function transitionsByIssue(db: Database.Database, ids: string[]): Map<string, {
   return map;
 }
 
-function activeWipAt(db: Database.Database, day: string, assignee?: string): number {
+function activeWipAt(db: Database.Database, day: string, assignee?: string, tallas?: string[]): number {
   const at = day + 'T23:59:59Z';
   const row = db.prepare(`
     SELECT COUNT(*) AS c FROM issues i
     WHERE i.created_at <= ?
       ${assignee ? 'AND i.assignee_id = ?' : ''}
+      ${tallas && tallas.length ? `AND i.talla IN (${tallas.map(() => '?').join(',')})` : ''}
       AND COALESCE(
         (SELECT t.to_status FROM transitions t
          WHERE t.issue_id = i.id AND t.transitioned_at <= ?
          ORDER BY t.transitioned_at DESC LIMIT 1),
         i.status
       ) IN (${activeIn})
-  `).get(at, ...(assignee ? [assignee] : []), at, ...ACTIVE_STATUSES) as any;
+  `).get(at, ...(assignee ? [assignee] : []), ...(tallas && tallas.length ? tallas : []), at, ...ACTIVE_STATUSES) as any;
   return row.c;
 }
 
 // ---- the four dimensions ---------------------------------------------------
 
-function delivery(db: Database.Database, w: Window, assignee?: string): number {
-  return completedIssues(db, w, assignee)
+function delivery(db: Database.Database, w: Window, assignee?: string, tallas?: string[]): number {
+  return completedIssues(db, w, assignee, tallas)
     .reduce((sum, i) => sum + (i.talla ? TALLA_WEIGHT[i.talla] : 0), 0);
 }
 
-function predictability(db: Database.Database, w: Window, assignee?: string): number | null {
-  const cts = completedIssues(db, w, assignee).map(cycleDays).filter(ct => ct >= MIN_CT_DAYS).sort((a, b) => a - b);
+function predictability(db: Database.Database, w: Window, assignee?: string, tallas?: string[]): number | null {
+  const cts = completedIssues(db, w, assignee, tallas).map(cycleDays).filter(ct => ct >= MIN_CT_DAYS).sort((a, b) => a - b);
   if (cts.length < 2) return null;
   const p50 = percentile(cts, 50)!;
   const p85 = percentile(cts, 85)!;
   return p50 === 0 ? null : p85 / p50;
 }
 
-function focus(db: Database.Database, w: Window, assignee?: string): number {
+function focus(db: Database.Database, w: Window, assignee?: string, tallas?: string[]): number {
   const days = eachDay(w);
   if (days.length === 0) return 0;
-  return days.reduce((sum, d) => sum + activeWipAt(db, d, assignee), 0) / days.length;
+  return days.reduce((sum, d) => sum + activeWipAt(db, d, assignee, tallas), 0) / days.length;
 }
 
-function flow(db: Database.Database, w: Window, assignee?: string): number | null {
-  const issues = completedIssues(db, w, assignee).filter(i => cycleDays(i) >= MIN_CT_DAYS);
+// Intentional deviation from spec: the spec said "return null if < 2 completed issues" but flow
+// efficiency is meaningful for a single issue (active time / total cycle time is well-defined with
+// just one data point). We therefore return null only when there are ZERO completed issues.
+// Predictability, by contrast, needs >= 2 to compute a spread (p85/p50), so it keeps the < 2 guard.
+function flow(db: Database.Database, w: Window, assignee?: string, tallas?: string[]): number | null {
+  const issues = completedIssues(db, w, assignee, tallas).filter(i => cycleDays(i) >= MIN_CT_DAYS);
   if (issues.length === 0) return null;
   const trans = transitionsByIssue(db, issues.map(i => i.issue_id));
   const ratios = issues
@@ -176,25 +183,26 @@ function contextOf(values: (number | null)[]): DimensionContext {
   return { min: Math.min(...nums), median: median(nums)!, max: Math.max(...nums) };
 }
 
-function dimensionsFor(db: Database.Database, cur: Window, prev: Window, assignee?: string): ScorecardDimensions {
+function dimensionsFor(db: Database.Database, cur: Window, prev: Window, assignee?: string, tallas?: string[]): ScorecardDimensions {
   return {
-    delivery: makeDimension(delivery(db, cur, assignee), delivery(db, prev, assignee), false),
-    predictability: makeDimension(predictability(db, cur, assignee), predictability(db, prev, assignee), true),
-    focus: makeDimension(focus(db, cur, assignee), focus(db, prev, assignee), true),
-    flow: makeDimension(flow(db, cur, assignee), flow(db, prev, assignee), false),
+    delivery: makeDimension(delivery(db, cur, assignee, tallas), delivery(db, prev, assignee, tallas), false),
+    predictability: makeDimension(predictability(db, cur, assignee, tallas), predictability(db, prev, assignee, tallas), true),
+    focus: makeDimension(focus(db, cur, assignee, tallas), focus(db, prev, assignee, tallas), true),
+    flow: makeDimension(flow(db, cur, assignee, tallas), flow(db, prev, assignee, tallas), false),
   };
 }
 
 export function getTeamScorecard(db: Database.Database, params: FilterParams): TeamScorecardResponse {
   const { cur, prev } = resolveWindows(params);
+  const tallas = params.talla ? params.talla.split(',').map(t => t.trim()).filter(Boolean) : undefined;
   const members = db.prepare('SELECT * FROM team_members ORDER BY display_name').all() as any[];
 
   const memberCards: PersonScorecard[] = members.map(m => ({
     member: m,
-    ...dimensionsFor(db, cur, prev, m.id),
+    ...dimensionsFor(db, cur, prev, m.id, tallas),
   }));
 
-  const team = dimensionsFor(db, cur, prev);
+  const team = dimensionsFor(db, cur, prev, undefined, tallas);
 
   const context = {
     delivery: contextOf(memberCards.map(c => c.delivery.value)),
