@@ -14,7 +14,7 @@ import type { Issue } from './lib/api';
 
 export default function App() {
   const { kpis, byTalla, cfd, throughput, aging, loading } = useMetrics();
-  const { team, loading: teamLoading } = useTeam();
+  const { scorecard, loading: teamLoading } = useTeam();
   const [issues, setIssues] = useState<Issue[]>([]);
 
   useEffect(() => { api.issues().then(setIssues).catch(() => {}); }, []);
@@ -35,7 +35,7 @@ export default function App() {
         </div>
         <div className="border-t border-slate-800 pt-4">
           <p className="text-[10px] uppercase tracking-widest text-slate-700 text-center mb-4">Comparativa del equipo</p>
-          <TeamTable team={team} loading={teamLoading} />
+          <TeamTable scorecard={scorecard} loading={teamLoading} />
         </div>
       </main>
     </div>
