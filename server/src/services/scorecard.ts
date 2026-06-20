@@ -49,7 +49,28 @@ interface CompletedIssue { issue_id: string; talla: Talla | null; start_at: stri
 const activeIn = ACTIVE_STATUSES.map(() => '?').join(',');
 const doneIn = DONE_STATUSES.map(() => '?').join(',');
 
-function completedIssues(db: Database.Database, w: Window, assignee?: string, tallas?: string[]): CompletedIssue[] {
+// Filters applied to the per-member / per-team queries. `assignee` (single) and `assignees`
+// (a set, for the restricted team aggregate) are mutually exclusive; an empty `assignees`
+// array means "no members" → matches nothing.
+interface QueryFilter { assignee?: string; assignees?: string[]; tallas?: string[] }
+
+function assigneeClause(f: QueryFilter): { sql: string; args: string[] } {
+  if (f.assignee) return { sql: 'AND i.assignee_id = ?', args: [f.assignee] };
+  if (f.assignees !== undefined) {
+    if (f.assignees.length === 0) return { sql: 'AND 1 = 0', args: [] };
+    return { sql: `AND i.assignee_id IN (${f.assignees.map(() => '?').join(',')})`, args: f.assignees };
+  }
+  return { sql: '', args: [] };
+}
+
+function tallaClause(f: QueryFilter): { sql: string; args: string[] } {
+  if (f.tallas && f.tallas.length) return { sql: `AND i.talla IN (${f.tallas.map(() => '?').join(',')})`, args: f.tallas };
+  return { sql: '', args: [] };
+}
+
+function completedIssues(db: Database.Database, w: Window, f: QueryFilter = {}): CompletedIssue[] {
+  const asg = assigneeClause(f);
+  const tal = tallaClause(f);
   const rows = db.prepare(`
     SELECT i.id AS issue_id, i.talla AS talla,
            MIN(t_start.transitioned_at) AS start_at,
@@ -58,14 +79,13 @@ function completedIssues(db: Database.Database, w: Window, assignee?: string, ta
     JOIN transitions t_start ON t_start.issue_id = i.id AND t_start.to_status IN (${activeIn})
     JOIN transitions t_end   ON t_end.issue_id   = i.id AND t_end.to_status   IN (${doneIn})
     WHERE t_end.transitioned_at >= ? AND t_end.transitioned_at <= ?
-      ${assignee ? 'AND i.assignee_id = ?' : ''}
-      ${tallas && tallas.length ? `AND i.talla IN (${tallas.map(() => '?').join(',')})` : ''}
+      ${asg.sql}
+      ${tal.sql}
     GROUP BY i.id, t_end.transitioned_at
   `).all(
     ...ACTIVE_STATUSES, ...DONE_STATUSES,
     w.from + 'T00:00:00Z', w.to + 'T23:59:59Z',
-    ...(assignee ? [assignee] : []),
-    ...(tallas && tallas.length ? tallas : []),
+    ...asg.args, ...tal.args,
   ) as any[];
   return rows.map(r => ({ issue_id: r.issue_id, talla: r.talla, start_at: r.start_at, end_at: r.end_at }));
 }
@@ -104,50 +124,52 @@ function transitionsByIssue(db: Database.Database, ids: string[]): Map<string, {
   return map;
 }
 
-function activeWipAt(db: Database.Database, day: string, assignee?: string, tallas?: string[]): number {
+function activeWipAt(db: Database.Database, day: string, f: QueryFilter = {}): number {
   const at = day + 'T23:59:59Z';
+  const asg = assigneeClause(f);
+  const tal = tallaClause(f);
   const row = db.prepare(`
     SELECT COUNT(*) AS c FROM issues i
     WHERE i.created_at <= ?
-      ${assignee ? 'AND i.assignee_id = ?' : ''}
-      ${tallas && tallas.length ? `AND i.talla IN (${tallas.map(() => '?').join(',')})` : ''}
+      ${asg.sql}
+      ${tal.sql}
       AND COALESCE(
         (SELECT t.to_status FROM transitions t
          WHERE t.issue_id = i.id AND t.transitioned_at <= ?
          ORDER BY t.transitioned_at DESC LIMIT 1),
         i.status
       ) IN (${activeIn})
-  `).get(at, ...(assignee ? [assignee] : []), ...(tallas && tallas.length ? tallas : []), at, ...ACTIVE_STATUSES) as any;
+  `).get(at, ...asg.args, ...tal.args, at, ...ACTIVE_STATUSES) as any;
   return row.c;
 }
 
 // ---- the four dimensions ---------------------------------------------------
 
-function delivery(db: Database.Database, w: Window, assignee?: string, tallas?: string[]): number {
-  return completedIssues(db, w, assignee, tallas)
+function delivery(db: Database.Database, w: Window, f: QueryFilter = {}): number {
+  return completedIssues(db, w, f)
     .reduce((sum, i) => sum + (i.talla ? TALLA_WEIGHT[i.talla] : 0), 0);
 }
 
-function predictability(db: Database.Database, w: Window, assignee?: string, tallas?: string[]): number | null {
-  const cts = completedIssues(db, w, assignee, tallas).map(cycleDays).filter(ct => ct >= MIN_CT_DAYS).sort((a, b) => a - b);
+function predictability(db: Database.Database, w: Window, f: QueryFilter = {}): number | null {
+  const cts = completedIssues(db, w, f).map(cycleDays).filter(ct => ct >= MIN_CT_DAYS).sort((a, b) => a - b);
   if (cts.length < 2) return null;
   const p50 = percentile(cts, 50)!;
   const p85 = percentile(cts, 85)!;
   return p50 === 0 ? null : p85 / p50;
 }
 
-function focus(db: Database.Database, w: Window, assignee?: string, tallas?: string[]): number {
+function focus(db: Database.Database, w: Window, f: QueryFilter = {}): number {
   const days = eachDay(w);
   if (days.length === 0) return 0;
-  return days.reduce((sum, d) => sum + activeWipAt(db, d, assignee, tallas), 0) / days.length;
+  return days.reduce((sum, d) => sum + activeWipAt(db, d, f), 0) / days.length;
 }
 
 // Intentional deviation from spec: the spec said "return null if < 2 completed issues" but flow
 // efficiency is meaningful for a single issue (active time / total cycle time is well-defined with
 // just one data point). We therefore return null only when there are ZERO completed issues.
 // Predictability, by contrast, needs >= 2 to compute a spread (p85/p50), so it keeps the < 2 guard.
-function flow(db: Database.Database, w: Window, assignee?: string, tallas?: string[]): number | null {
-  const issues = completedIssues(db, w, assignee, tallas).filter(i => cycleDays(i) >= MIN_CT_DAYS);
+function flow(db: Database.Database, w: Window, f: QueryFilter = {}): number | null {
+  const issues = completedIssues(db, w, f).filter(i => cycleDays(i) >= MIN_CT_DAYS);
   if (issues.length === 0) return null;
   const trans = transitionsByIssue(db, issues.map(i => i.issue_id));
   const ratios = issues
@@ -183,13 +205,21 @@ function contextOf(values: (number | null)[]): DimensionContext {
   return { min: Math.min(...nums), median: median(nums)!, max: Math.max(...nums) };
 }
 
-function dimensionsFor(db: Database.Database, cur: Window, prev: Window, assignee?: string, tallas?: string[]): ScorecardDimensions {
+function dimensionsFor(db: Database.Database, cur: Window, prev: Window, f: QueryFilter = {}): ScorecardDimensions {
   return {
-    delivery: makeDimension(delivery(db, cur, assignee, tallas), delivery(db, prev, assignee, tallas), false),
-    predictability: makeDimension(predictability(db, cur, assignee, tallas), predictability(db, prev, assignee, tallas), true),
-    focus: makeDimension(focus(db, cur, assignee, tallas), focus(db, prev, assignee, tallas), true),
-    flow: makeDimension(flow(db, cur, assignee, tallas), flow(db, prev, assignee, tallas), false),
+    delivery: makeDimension(delivery(db, cur, f), delivery(db, prev, f), false),
+    predictability: makeDimension(predictability(db, cur, f), predictability(db, prev, f), true),
+    focus: makeDimension(focus(db, cur, f), focus(db, prev, f), true),
+    flow: makeDimension(flow(db, cur, f), flow(db, prev, f), false),
   };
+}
+
+// A member is shown only if it has data for all four indicators. In practice the binding
+// constraint is predictability (needs >= 2 completed issues); flow needs >= 1. Members without
+// complete data are excluded from the table, the context band, AND the team aggregate.
+function hasAllData(c: ScorecardDimensions): boolean {
+  return c.delivery.value !== null && c.predictability.value !== null
+    && c.focus.value !== null && c.flow.value !== null;
 }
 
 export function getTeamScorecard(db: Database.Database, params: FilterParams): TeamScorecardResponse {
@@ -197,12 +227,13 @@ export function getTeamScorecard(db: Database.Database, params: FilterParams): T
   const tallas = params.talla ? params.talla.split(',').map(t => t.trim()).filter(Boolean) : undefined;
   const members = db.prepare('SELECT * FROM team_members ORDER BY display_name').all() as any[];
 
-  const memberCards: PersonScorecard[] = members.map(m => ({
-    member: m,
-    ...dimensionsFor(db, cur, prev, m.id, tallas),
-  }));
+  const memberCards: PersonScorecard[] = members
+    .map(m => ({ member: m, ...dimensionsFor(db, cur, prev, { assignee: m.id, tallas }) }))
+    .filter(hasAllData);
 
-  const team = dimensionsFor(db, cur, prev, undefined, tallas);
+  // Team aggregate restricted to the included members only (empty set → matches nothing).
+  const includedIds = memberCards.map(c => c.member.id);
+  const team = dimensionsFor(db, cur, prev, { assignees: includedIds, tallas });
 
   const context = {
     delivery: contextOf(memberCards.map(c => c.delivery.value)),

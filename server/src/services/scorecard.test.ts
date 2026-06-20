@@ -79,39 +79,69 @@ describe('getTeamScorecard', () => {
     expect(sc.team.delivery.value).toBe(6);
   });
 
-  it('returns null predictability/flow with insufficient data', () => {
+  it('excludes a member that lacks data for all four indicators', () => {
+    // Only 1 completed issue → predictability is null → member is incomplete → dropped entirely.
     seedIssue(db, 'A-1', 'u1', 'M', '2026-06-08T00:00:00Z',
       [['In Progress', '2026-06-09T09:00:00Z'], ['Done', '2026-06-10T09:00:00Z']]);
-    const sc = getTeamScorecard(db, params); // only 1 completed issue
-    expect(sc.members[0].predictability.value).toBeNull();
-    expect(sc.members[0].flow.value).not.toBeNull(); // flow needs only 1 issue
+    const sc = getTeamScorecard(db, params);
+    expect(sc.members).toHaveLength(0);
+  });
+
+  it('excludes incomplete members from the table and from the team aggregate', () => {
+    seedMember(db, 'u2', 'Beto');
+    // u1 is complete: 2 completed M issues (delivery 4) with distinct cycle times.
+    seedIssue(db, 'A-1', 'u1', 'M', '2026-06-08T00:00:00Z',
+      [['In Progress', '2026-06-09T09:00:00Z'], ['Done', '2026-06-10T09:00:00Z']]);
+    seedIssue(db, 'A-2', 'u1', 'M', '2026-06-08T00:00:00Z',
+      [['In Progress', '2026-06-09T09:00:00Z'], ['Done', '2026-06-11T09:00:00Z']]);
+    // u2 is incomplete: a single completed XL issue (delivery 8) → predictability null.
+    seedIssue(db, 'B-1', 'u2', 'XL', '2026-06-08T00:00:00Z',
+      [['In Progress', '2026-06-09T09:00:00Z'], ['Done', '2026-06-10T09:00:00Z']]);
+    const sc = getTeamScorecard(db, params);
+    expect(sc.members).toHaveLength(1);
+    expect(sc.members[0].member.id).toBe('u1');
+    // Team aggregate must NOT include u2's XL (8): only u1's two M (4) count.
+    expect(sc.team.delivery.value).toBe(4);
   });
 
   it('computes flow efficiency from active vs. blocked time', () => {
-    // In Progress for 1 day, Blocked for 1 day, then Done → active ratio = 0.5 → 50%
-    seedIssue(db, 'A-1', 'u1', 'M', '2026-06-08T00:00:00Z', [
-      ['In Progress', '2026-06-09T00:00:00Z'],
-      ['Blocked', '2026-06-10T00:00:00Z'],
-      ['Done', '2026-06-11T00:00:00Z'],
-    ]);
+    // Two completed issues (so the member is included), each: In Progress 1 day, Blocked 1 day,
+    // then Done → active ratio 0.5 → median flow 50%.
+    for (const id of ['A-1', 'A-2']) {
+      seedIssue(db, id, 'u1', 'M', '2026-06-08T00:00:00Z', [
+        ['In Progress', '2026-06-09T00:00:00Z'],
+        ['Blocked', '2026-06-10T00:00:00Z'],
+        ['Done', '2026-06-11T00:00:00Z'],
+      ]);
+    }
     const sc = getTeamScorecard(db, params);
     expect(sc.members[0].flow.value).toBeCloseTo(50, 1);
   });
 
   it('builds team-median context across members', () => {
     seedMember(db, 'u2', 'Beto');
+    // u1 complete: two M (delivery 4). u2 complete: one L + one XL (delivery 12).
     seedIssue(db, 'A-1', 'u1', 'M', '2026-06-08T00:00:00Z',
-      [['In Progress', '2026-06-09T09:00:00Z'], ['Done', '2026-06-10T09:00:00Z']]); // delivery 2
-    seedIssue(db, 'B-1', 'u2', 'XL', '2026-06-08T00:00:00Z',
-      [['In Progress', '2026-06-09T09:00:00Z'], ['Done', '2026-06-10T09:00:00Z']]); // delivery 8
+      [['In Progress', '2026-06-09T09:00:00Z'], ['Done', '2026-06-10T09:00:00Z']]);
+    seedIssue(db, 'A-2', 'u1', 'M', '2026-06-08T00:00:00Z',
+      [['In Progress', '2026-06-09T09:00:00Z'], ['Done', '2026-06-11T09:00:00Z']]);
+    seedIssue(db, 'B-1', 'u2', 'L', '2026-06-08T00:00:00Z',
+      [['In Progress', '2026-06-09T09:00:00Z'], ['Done', '2026-06-10T09:00:00Z']]);
+    seedIssue(db, 'B-2', 'u2', 'XL', '2026-06-08T00:00:00Z',
+      [['In Progress', '2026-06-09T09:00:00Z'], ['Done', '2026-06-11T09:00:00Z']]);
     const sc = getTeamScorecard(db, params);
-    expect(sc.context.delivery.min).toBe(2);
-    expect(sc.context.delivery.max).toBe(8);
-    expect(sc.context.delivery.median).toBe(5);
+    expect(sc.context.delivery.min).toBe(4);
+    expect(sc.context.delivery.max).toBe(12);
+    expect(sc.context.delivery.median).toBe(8);
   });
 
   it('parses Jira timestamps with -0300 offset (no colon) without producing NaN', () => {
+    // Two completed issues so the member is included; both use the -0300 (no-colon) offset.
     seedIssue(db, 'A-1', 'u1', 'M', '2026-06-08T00:00:00-0300', [
+      ['In Progress', '2026-06-09T09:00:00-0300'],
+      ['Done', '2026-06-10T09:00:00-0300'],
+    ]);
+    seedIssue(db, 'A-2', 'u1', 'M', '2026-06-08T00:00:00-0300', [
       ['In Progress', '2026-06-09T09:00:00-0300'],
       ['Done', '2026-06-11T09:00:00-0300'],
     ]);
@@ -121,14 +151,16 @@ describe('getTeamScorecard', () => {
   });
 
   it('respects the talla filter for delivery', () => {
-    // Seed one M (weight 2) and one L (weight 4) — both completed in the current window.
-    // With talla='M', only the M issue should count → delivery = 2.
+    // Two M (weight 2 each) plus one L (weight 4), all completed in the window. With talla='M'
+    // only the two M issues count → delivery 4, and the member stays included (>= 2 completed M).
     seedIssue(db, 'A-1', 'u1', 'M', '2026-06-08T00:00:00Z',
       [['In Progress', '2026-06-09T09:00:00Z'], ['Done', '2026-06-10T09:00:00Z']]);
-    seedIssue(db, 'A-2', 'u1', 'L', '2026-06-08T00:00:00Z',
+    seedIssue(db, 'A-2', 'u1', 'M', '2026-06-08T00:00:00Z',
+      [['In Progress', '2026-06-09T09:00:00Z'], ['Done', '2026-06-11T09:00:00Z']]);
+    seedIssue(db, 'A-3', 'u1', 'L', '2026-06-08T00:00:00Z',
       [['In Progress', '2026-06-09T09:00:00Z'], ['Done', '2026-06-11T09:00:00Z']]);
     const sc = getTeamScorecard(db, { from: '2026-06-08', to: '2026-06-14', talla: 'M' });
-    expect(sc.members[0].delivery.value).toBe(2);
-    expect(sc.team.delivery.value).toBe(2);
+    expect(sc.members[0].delivery.value).toBe(4);   // L (4) excluded by the talla filter
+    expect(sc.team.delivery.value).toBe(4);
   });
 });
