@@ -3,12 +3,16 @@
 Ideas de funcionalidades/insights identificadas durante el brainstorming del 2026-06-19.
 Cada una es una feature independiente con su propio ciclo spec → plan cuando se encare.
 
-## En curso / con spec
+## Entregado
 
-- **Team Performance Scorecard** — reemplaza el score `A/B/C/D` por 4 señales
-  multidimensionales (Entrega, Predecibilidad, Foco, Flujo) vs. el propio historial.
+- **Team Performance Scorecard** — ✅ entregado (mergeado a `main` el 2026-06-20).
+  Reemplaza el score `A/B/C/D` por 4 señales multidimensionales (Entrega, Predecibilidad,
+  Foco, Flujo) vs. el propio historial, con fila agregada "Equipo" y banda de contexto
+  (mediana, no ranking). Incluye: filtro por talla, exclusión de miembros sin datos en los
+  4 indicadores, y orden por click en el encabezado (alfabético por defecto).
+  La dimensión **Flujo** cubre *flow efficiency* (tiempo activo vs. espera).
   Spec: `docs/superpowers/specs/2026-06-19-team-performance-scorecard-design.md`.
-  Nota: la dimensión **Flujo** ya cubre *flow efficiency* (tiempo activo vs. espera).
+  Plan: `docs/superpowers/plans/2026-06-20-team-performance-scorecard.md`.
 
 ## Backlog
 
