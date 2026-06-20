@@ -25,4 +25,17 @@ describe('DimensionCell', () => {
     render(<DimensionCell dim={dim} context={ctx} format={v => `${v}`} />);
     expect(screen.getByLabelText('empeora')).toBeInTheDocument();
   });
+
+  it('renders the context bar by default', () => {
+    const dim: DimensionValue = { value: 7, previous: 5, trend: 'up', improving: 'better' };
+    render(<DimensionCell dim={dim} context={ctx} format={v => `${v}`} />);
+    expect(screen.getByTestId('context-bar')).toBeInTheDocument();
+  });
+
+  it('hides the context bar when showContext is false', () => {
+    const dim: DimensionValue = { value: 7, previous: 5, trend: 'up', improving: 'better' };
+    render(<DimensionCell dim={dim} context={ctx} format={v => `${v}`} showContext={false} />);
+    expect(screen.queryByTestId('context-bar')).toBeNull();
+    expect(screen.getByText('7')).toBeInTheDocument();
+  });
 });

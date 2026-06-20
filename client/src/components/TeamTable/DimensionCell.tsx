@@ -17,9 +17,10 @@ interface Props {
   dim: DimensionValue;
   context: DimensionContext;
   format: (value: number) => string;
+  showContext?: boolean;
 }
 
-export function DimensionCell({ dim, context, format }: Props) {
+export function DimensionCell({ dim, context, format, showContext = true }: Props) {
   if (dim.value === null) {
     return <td className="py-2.5 text-slate-600">—</td>;
   }
@@ -27,8 +28,9 @@ export function DimensionCell({ dim, context, format }: Props) {
   // Position the value and the median marker on a 0..100% scale of [min,max].
   const span = context.max - context.min;
   const pct = (v: number) => (span === 0 ? 50 : ((v - context.min) / span) * 100);
-  const fillPct = pct(dim.value);
-  const medianPct = pct(context.median);
+  const clamp = (n: number) => Math.max(0, Math.min(100, n));
+  const fillPct = clamp(pct(dim.value));
+  const medianPct = clamp(pct(context.median));
 
   return (
     <td className="py-2.5">
@@ -38,10 +40,12 @@ export function DimensionCell({ dim, context, format }: Props) {
           {ARROW[dim.trend]}
         </span>
       </div>
-      <div className="relative h-1.5 w-14 bg-slate-700 rounded mt-1">
-        <div className="absolute top-0 left-0 h-full bg-blue-500/60 rounded" style={{ width: `${fillPct}%` }} />
-        <div className="absolute -top-0.5 w-0.5 h-2.5 bg-slate-300 rounded" style={{ left: `${medianPct}%` }} />
-      </div>
+      {showContext && (
+        <div data-testid="context-bar" className="relative h-1.5 w-14 bg-slate-700 rounded mt-1">
+          <div className="absolute top-0 left-0 h-full bg-blue-500/60 rounded" style={{ width: `${fillPct}%` }} />
+          <div className="absolute -top-0.5 w-0.5 h-2.5 bg-slate-300 rounded" style={{ left: `${medianPct}%` }} />
+        </div>
+      )}
     </td>
   );
 }
