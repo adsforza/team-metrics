@@ -1,6 +1,6 @@
-import type { KPIMetrics, TallaMetric, CFDPoint, ThroughputWeek, AgingIssue, PersonMetrics, Issue, TeamMember } from '../../../server/src/types';
+import type { KPIMetrics, TallaMetric, CFDPoint, ThroughputWeek, AgingIssue, TeamScorecardResponse, PersonScorecard, ScorecardDimensions, DimensionValue, DimensionContext, Issue, TeamMember } from '../../../server/src/types';
 
-export type { KPIMetrics, TallaMetric, CFDPoint, ThroughputWeek, AgingIssue, PersonMetrics, Issue, TeamMember };
+export type { KPIMetrics, TallaMetric, CFDPoint, ThroughputWeek, AgingIssue, TeamScorecardResponse, PersonScorecard, ScorecardDimensions, DimensionValue, DimensionContext, Issue, TeamMember };
 
 function buildQuery(params: Record<string, string | undefined>): string {
   const q = Object.entries(params)
@@ -22,7 +22,7 @@ export const api = {
   metricsCFD: (p: Record<string, string | undefined> = {}) => get<CFDPoint[]>('/metrics/cfd', p),
   metricsThroughput: (p: Record<string, string | undefined> = {}) => get<ThroughputWeek[]>('/metrics/throughput', p),
   metricsAging: (p: Record<string, string | undefined> = {}) => get<AgingIssue[]>('/metrics/aging', p),
-  team: (p: Record<string, string | undefined> = {}) => get<PersonMetrics[]>('/team', p),
+  team: (p: Record<string, string | undefined> = {}) => get<TeamScorecardResponse>('/team', p),
   teamMembers: () => get<TeamMember[]>('/team/members'),
   issues: (p: Record<string, string | undefined> = {}) => get<Issue[]>('/issues', p),
   syncNow: () => fetch('/api/sync', { method: 'POST' }).then(r => r.json()),
