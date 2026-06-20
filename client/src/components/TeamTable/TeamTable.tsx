@@ -1,6 +1,10 @@
+import { useMemo, useState } from 'react';
 import type { TeamScorecardResponse, ScorecardDimensions } from '../../lib/api';
 import { InfoTooltip } from '../InfoTooltip/InfoTooltip';
 import { DimensionCell } from './DimensionCell';
+
+type SortKey = 'name' | keyof ScorecardDimensions;
+type SortDir = 'asc' | 'desc';
 
 const fmtInt = (v: number) => `${Math.round(v)}`;
 const fmtRatio = (v: number) => v.toFixed(1);
@@ -25,6 +29,11 @@ function Initials({ name }: { name: string }) {
   );
 }
 
+function SortArrow({ active, dir }: { active: boolean; dir: SortDir }) {
+  if (!active) return null;
+  return <span aria-hidden className="text-slate-300">{dir === 'asc' ? '▲' : '▼'}</span>;
+}
+
 interface Props {
   scorecard: TeamScorecardResponse;
   loading: boolean;
@@ -32,6 +41,34 @@ interface Props {
 
 export function TeamTable({ scorecard, loading }: Props) {
   const { team, members, context } = scorecard;
+  // Default order is alphabetical (neutral, no ranking). Clicking a header sorts by it.
+  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+
+  function toggleSort(key: SortKey) {
+    if (key === sortKey) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortKey(key); setSortDir(key === 'name' ? 'asc' : 'desc'); }
+  }
+
+  const sortedMembers = useMemo(() => {
+    const arr = [...members];
+    arr.sort((a, b) => {
+      if (sortKey === 'name') {
+        const cmp = a.member.display_name.localeCompare(b.member.display_name);
+        return sortDir === 'asc' ? cmp : -cmp;
+      }
+      const av = (a as ScorecardDimensions)[sortKey].value;
+      const bv = (b as ScorecardDimensions)[sortKey].value;
+      if (av === null && bv === null) return 0;
+      if (av === null) return 1;   // missing values always sort last
+      if (bv === null) return -1;
+      return sortDir === 'asc' ? av - bv : bv - av;
+    });
+    return arr;
+  }, [members, sortKey, sortDir]);
+
+  const ariaSort = (key: SortKey) =>
+    sortKey === key ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none';
 
   return (
     <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
@@ -39,7 +76,7 @@ export function TeamTable({ scorecard, loading }: Props) {
         <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Rendimiento por persona</h3>
         <InfoTooltip text="Cuatro señales de flujo por persona. La flecha compara con el período anterior (verde = mejora, ámbar = empeora). La barrita ubica a la persona contra la mediana del equipo (marca clara), como contexto, no como ranking." />
       </div>
-      <p className="text-xs text-slate-600 mb-4">Entrega · Predecibilidad · Foco · Flujo — tendencia vs. período anterior</p>
+      <p className="text-xs text-slate-600 mb-4">Entrega · Predecibilidad · Foco · Flujo — tendencia vs. período anterior · clic en un encabezado para ordenar</p>
 
       {loading ? (
         <div className="space-y-2">
@@ -49,10 +86,27 @@ export function TeamTable({ scorecard, loading }: Props) {
         <table className="w-full text-xs">
           <thead>
             <tr className="text-slate-500 uppercase tracking-wide text-[10px]">
-              <th className="text-left pb-2">Persona</th>
+              <th className="text-left pb-2" aria-sort={ariaSort('name')}>
+                <button
+                  type="button"
+                  onClick={() => toggleSort('name')}
+                  className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-slate-300"
+                >
+                  Persona<SortArrow active={sortKey === 'name'} dir={sortDir} />
+                </button>
+              </th>
               {COLUMNS.map(col => (
-                <th key={col.key} className="text-left pb-2">
-                  <span className="inline-flex items-center gap-1">{col.label}<InfoTooltip text={col.info} /></span>
+                <th key={col.key} className="text-left pb-2" aria-sort={ariaSort(col.key)}>
+                  <span className="inline-flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort(col.key)}
+                      className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-slate-300"
+                    >
+                      {col.label}<SortArrow active={sortKey === col.key} dir={sortDir} />
+                    </button>
+                    <InfoTooltip text={col.info} />
+                  </span>
                 </th>
               ))}
             </tr>
@@ -64,7 +118,7 @@ export function TeamTable({ scorecard, loading }: Props) {
                 <DimensionCell key={col.key} dim={team[col.key]} context={context[col.key]} format={col.format} showContext={false} />
               ))}
             </tr>
-            {members.map(p => (
+            {sortedMembers.map(p => (
               <tr key={p.member.id} className="border-t border-slate-700 hover:bg-slate-700/40">
                 <td className="py-2.5">
                   <div className="flex items-center gap-2">

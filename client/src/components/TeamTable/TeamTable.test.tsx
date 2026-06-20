@@ -1,6 +1,6 @@
 // client/src/components/TeamTable/TeamTable.test.tsx
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { TeamTable } from './TeamTable';
 import type { TeamScorecardResponse } from '../../lib/api';
 
@@ -31,5 +31,30 @@ describe('TeamTable', () => {
   it('shows an empty state when there are no members', () => {
     render(<TeamTable scorecard={{ ...scorecard, members: [] }} loading={false} />);
     expect(screen.getByText('Sin datos de equipo')).toBeInTheDocument();
+  });
+
+  it('defaults to alphabetical order and sorts by a column when its header is clicked', () => {
+    const m = (id: string, name: string, delivery: number) => ({
+      member: { id, display_name: name, email: `${id}@t.com`, avatar_url: null },
+      delivery: dim(delivery), predictability: dim(2), focus: dim(2), flow: dim(90),
+    });
+    const sc: TeamScorecardResponse = {
+      ...scorecard,
+      // intentionally out of alphabetical order to prove the component sorts
+      members: [m('u2', 'Beto', 9), m('u1', 'Ana', 1), m('u3', 'Carlos', 5)],
+    };
+    render(<TeamTable scorecard={sc} loading={false} />);
+
+    // member rows are everything after the header row and the "Equipo" aggregate row
+    const order = () =>
+      screen.getAllByRole('row').slice(2).map(r => (r.textContent || '').match(/Ana|Beto|Carlos/)?.[0]);
+
+    expect(order()).toEqual(['Ana', 'Beto', 'Carlos']);            // default: name asc
+
+    fireEvent.click(screen.getByRole('button', { name: /Entrega/ }));
+    expect(order()).toEqual(['Beto', 'Carlos', 'Ana']);            // delivery desc (9, 5, 1)
+
+    fireEvent.click(screen.getByRole('button', { name: /Entrega/ }));
+    expect(order()).toEqual(['Ana', 'Carlos', 'Beto']);            // toggle → delivery asc (1, 5, 9)
   });
 });
