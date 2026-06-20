@@ -14,7 +14,7 @@ const COLUMNS = [
   { key: 'focus' as const, label: 'Foco', format: fmtRatio,
     info: 'WIP concurrente promedio: cuántos issues activos tuvo en paralelo. Más bajo = más enfocado.' },
   { key: 'flow' as const, label: 'Flujo', format: fmtPct,
-    info: 'Flow efficiency: % del cycle time en que el trabajo avanzó (estados activos) vs. esperó o estuvo bloqueado. Más alto es mejor.' },
+    info: 'Flow efficiency: % del cycle time en que el trabajo avanzó (estados activos) vs. esperó o estuvo bloqueado. Más alto es mejor. Nota: si el flujo de trabajo casi no registra estados de espera/bloqueo entre que el issue arranca y se completa, este valor tiende a ~100% (es la mediana de los issues). El bloqueo se ve aparte en el KPI "Issues bloqueados".' },
 ];
 
 function Initials({ name }: { name: string }) {
