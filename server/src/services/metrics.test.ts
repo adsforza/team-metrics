@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { applySchema } from '../db/schema';
-import { getKPIs, getCycleTimeByTalla, getThroughputWeekly, getAgingWIP, getTeamMetrics } from './metrics';
+import { getKPIs, getCycleTimeByTalla, getThroughputWeekly, getAgingWIP } from './metrics';
 
 function seedDb(db: Database.Database) {
   db.prepare(`INSERT INTO team_members VALUES ('u1','Ana G','ana@t.com',null)`).run();

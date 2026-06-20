@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import type { FilterParams, KPIMetrics, TallaMetric, CFDPoint, ThroughputWeek, AgingIssue, PersonMetrics, Talla, Score } from '../types';
+import type { FilterParams, KPIMetrics, TallaMetric, CFDPoint, ThroughputWeek, AgingIssue, Talla } from '../types';
 
 function percentile(sorted: number[], p: number): number | null {
   if (sorted.length === 0) return null;
@@ -234,56 +234,3 @@ export function getAgingWIP(db: Database.Database, params: FilterParams): AgingI
   return aging;
 }
 
-export function getTeamMetrics(db: Database.Database, params: FilterParams): PersonMetrics[] {
-  const members = db.prepare('SELECT * FROM team_members').all() as any[];
-  const tallas: Talla[] = ['S', 'M', 'L', 'XL'];
-  const TALLA_WEIGHT: Record<Talla, number> = { S: 1, M: 2, L: 4, XL: 8 };
-
-  const personScores: Array<{ member: any; rawScore: number; metrics: Omit<PersonMetrics, 'score'> }> = [];
-
-  for (const member of members) {
-    const memberParams = { ...params, assignee: member.id };
-    const kpi = getKPIs(db, memberParams);
-    const cycleTimes = getCycleTimes(db, memberParams);
-
-    const mix_tallas = Object.fromEntries(
-      tallas.map(t => [t, getCycleTimes(db, { ...memberParams, talla: t }).length])
-    ) as Record<Talla, number>;
-
-    // Sparkline: throughput for last 4 weeks
-    const sparkline: number[] = [];
-    for (let i = 3; i >= 0; i--) {
-      const weekStart = new Date();
-      weekStart.setDate(weekStart.getDate() - (i + 1) * 7);
-      const weekEnd = new Date();
-      weekEnd.setDate(weekEnd.getDate() - i * 7);
-      const wkRow = db.prepare(`
-        SELECT COUNT(*) as c FROM issues i
-        JOIN transitions t ON t.issue_id = i.id AND t.to_status IN ('Done','Finalizada')
-        WHERE i.assignee_id = ? AND t.transitioned_at >= ? AND t.transitioned_at < ?
-      `).get(member.id, weekStart.toISOString(), weekEnd.toISOString()) as any;
-      sparkline.push(wkRow.c);
-    }
-
-    // Weighted throughput
-    const weightedThroughput = tallas.reduce((sum, t) => sum + mix_tallas[t] * TALLA_WEIGHT[t], 0);
-    const ctP50 = percentile([...cycleTimes].sort((a, b) => a - b), 50);
-    const rawScore = ctP50 ? weightedThroughput / ctP50 : weightedThroughput;
-
-    personScores.push({
-      member,
-      rawScore,
-      metrics: { member, throughput: kpi.throughput, ct_p50: ctP50, mix_tallas, blocked: kpi.blocked_count, sparkline },
-    });
-  }
-
-  // Assign letter scores by quartile
-  const sorted = [...personScores].sort((a, b) => b.rawScore - a.rawScore);
-  const n = sorted.length;
-
-  return sorted.map((p, i) => {
-    const quartile = n === 1 ? 0 : i / (n - 1);
-    const score: Score = quartile < 0.25 ? 'A' : quartile < 0.5 ? 'B' : quartile < 0.75 ? 'C' : 'D';
-    return { ...p.metrics, score };
-  });
-}

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { getDb } from '../db/index';
-import { getTeamMetrics } from '../services/metrics';
+import { getTeamScorecard } from '../services/scorecard';
 import type { FilterParams } from '../types';
 
 const router = Router();
@@ -8,7 +8,7 @@ const router = Router();
 router.get('/', (req, res, next) => {
   try {
     const params: FilterParams = { from: req.query.from as string, to: req.query.to as string, talla: req.query.talla as string };
-    res.json(getTeamMetrics(getDb(), params));
+    res.json(getTeamScorecard(getDb(), params));
   } catch (err) {
     next(err);
   }

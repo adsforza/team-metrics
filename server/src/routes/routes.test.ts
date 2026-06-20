@@ -33,10 +33,14 @@ describe('GET /api/metrics', () => {
 });
 
 describe('GET /api/team', () => {
-  it('returns 200 with array', async () => {
+  it('returns 200 with scorecard shape', async () => {
     const res = await request(app).get('/api/team');
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body).toHaveProperty('team');
+    expect(res.body).toHaveProperty('members');
+    expect(res.body).toHaveProperty('context');
+    expect(Array.isArray(res.body.members)).toBe(true);
+    expect(res.body.team).toHaveProperty('delivery');
   });
 });
 
