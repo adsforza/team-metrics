@@ -126,7 +126,10 @@ interface TeamScorecardResponse {
 ```
 
 - Se **elimina** el cálculo de score por cuartil de `getTeamMetrics` y el uso del tipo `Score` allí.
-- Se conserva el soporte de filtros existente (`from/to/assignee/talla/status`).
+- Se conserva el soporte de filtros existente. `from/to` definen la ventana; `talla` filtra los
+  issues considerados en las 4 dimensiones (cuando se especifica). `status` se ignora a propósito:
+  no aplica a métricas de flujo históricas. `assignee` no se reenvía porque la scorecard ya
+  desglosa por persona.
 
 ## Componentes (cliente)
 
@@ -138,8 +141,10 @@ interface TeamScorecardResponse {
 
 ## Manejo de errores / casos borde
 
-- **Datos insuficientes:** < 2 issues completados → `predictability` y `flow` = `null` → la celda
-  muestra "—". `delivery` y `focus` pueden ser 0 legítimamente.
+- **Datos insuficientes:** `predictability` = `null` con < 2 issues completados (el ratio p85/p50
+  no tiene sentido con un solo punto). `flow` = `null` solo con 0 issues completados (la eficiencia
+  de flujo de un único issue ya es una medición válida). Celda en `null` → muestra "—". `delivery`
+  y `focus` pueden ser 0 legítimamente.
 - **Sin ventana anterior** (rango al inicio del histórico): `trend='flat'`, `improving='steady'`.
 - **Persona sin actividad:** las 4 dimensiones en `null`/0, fila atenuada.
 - **Cycle time 0 / batch-moves:** filtrados (< 1 h) reutilizando la lógica actual; evita división
