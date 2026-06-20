@@ -1,5 +1,4 @@
-import type { TeamScorecardResponse, ScorecardDimensions, DimensionContext } from '../../lib/api';
-import type { TeamMember } from '../../lib/api';
+import type { TeamScorecardResponse, ScorecardDimensions } from '../../lib/api';
 import { InfoTooltip } from '../InfoTooltip/InfoTooltip';
 import { DimensionCell } from './DimensionCell';
 

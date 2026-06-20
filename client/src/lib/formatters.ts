@@ -1,4 +1,4 @@
-import type { Talla, Score } from '../../../server/src/types';
+import type { Talla } from '../../../server/src/types';
 
 export function formatDays(days: number | null): string {
   if (days === null) return '—';
@@ -21,13 +21,6 @@ export const TALLA_BG: Record<Talla, string> = {
   M: 'bg-blue-900 text-blue-300',
   L: 'bg-purple-900 text-purple-300',
   XL: 'bg-red-900 text-red-300',
-};
-
-export const SCORE_BG: Record<Score, string> = {
-  A: 'bg-green-900 text-green-300',
-  B: 'bg-blue-900 text-blue-300',
-  C: 'bg-amber-900 text-amber-300',
-  D: 'bg-red-900 text-red-300',
 };
 
 export function agePillClass(days: number): string {
