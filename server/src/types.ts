@@ -87,12 +87,40 @@ export interface AgingIssue {
   assignee_id: string | null;
 }
 
-export interface PersonMetrics {
+export type Trend = 'up' | 'down' | 'flat';
+export type Improving = 'better' | 'worse' | 'steady';
+
+export interface DimensionValue {
+  value: number | null;      // null = insufficient data
+  previous: number | null;   // value over the immediately preceding window
+  trend: Trend;              // raw direction of change
+  improving: Improving;      // polarity-aware reading → drives color
+}
+
+export interface DimensionContext {
+  min: number;
+  median: number;
+  max: number;
+}
+
+export interface ScorecardDimensions {
+  delivery: DimensionValue;
+  predictability: DimensionValue;
+  focus: DimensionValue;
+  flow: DimensionValue;
+}
+
+export interface PersonScorecard extends ScorecardDimensions {
   member: TeamMember;
-  throughput: number;
-  ct_p50: number | null;
-  mix_tallas: Record<Talla, number>;
-  blocked: number;
-  score: Score;
-  sparkline: number[];
+}
+
+export interface TeamScorecardResponse {
+  team: ScorecardDimensions;
+  members: PersonScorecard[];
+  context: {
+    delivery: DimensionContext;
+    predictability: DimensionContext;
+    focus: DimensionContext;
+    flow: DimensionContext;
+  };
 }
