@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
 import { percentile } from './stats';
-import { DONE_STATUSES } from './statusCategories';
+import { DONE_STATUSES, STATUS_CATEGORIES } from './statusCategories';
 import type {
   ForecastBin, ForecastWhen, ForecastHowMany, ForecastResult, ForecastConfidenceDate,
 } from '../types';
@@ -72,7 +72,9 @@ export function histogram(sortedSamples: number[], bins = 20): ForecastBin[] {
   return out;
 }
 
-const WIP_EXCLUDED = ['Done', 'Finalizada', 'Cancelled', 'Cancelado', 'To Do', 'Tareas por hacer', 'Backlog', 'Por Hacer'];
+// WIP = anything not done, not cancelled, not still in the backlog/to-do.
+// Derived from the canonical taxonomy so it can't drift from statusCategories.ts.
+const WIP_EXCLUDED = [...STATUS_CATEGORIES.done, ...STATUS_CATEGORIES.cancelled, ...STATUS_CATEGORIES.todo];
 const wipIn = WIP_EXCLUDED.map(() => '?').join(',');
 
 function currentWip(db: Database.Database): number {
@@ -82,7 +84,7 @@ function currentWip(db: Database.Database): number {
 
 function resolveItems(raw: unknown, wip: number): number {
   const n = Math.floor(Number(raw));
-  if (!Number.isFinite(n) || n < 1) return Math.max(1, Math.min(1000, wip || 1));
+  if (!Number.isFinite(n) || n < 1) return Math.max(1, Math.min(1000, wip || 1)); // no/invalid items param → default to current WIP, floored at 1 (a 0-WIP board forecasts 1 item)
   return Math.min(1000, n);
 }
 
@@ -94,7 +96,8 @@ function resolveHorizon(raw: unknown): number {
 
 function dayConf(sorted: number[], p: number, asOf: Date): ForecastConfidenceDate {
   const days = Math.ceil(percentile(sorted, p)!);
-  const date = new Date(asOf.getTime() + days * MS_PER_DAY).toISOString().slice(0, 10);
+  const baseMidnight = Date.UTC(asOf.getUTCFullYear(), asOf.getUTCMonth(), asOf.getUTCDate());
+  const date = new Date(baseMidnight + days * MS_PER_DAY).toISOString().slice(0, 10);
   return { days, date };
 }
 
@@ -120,6 +123,8 @@ export function getForecast(db: Database.Database, opts: ForecastOpts = {}): For
   };
 
   const hmS = simulateHowMany(daily, horizonDays, TRIALS, rng);
+  // "At least N with C% confidence" maps to the LOWER tail of the completion distribution:
+  // 85% confidence → 15th percentile, 95% confidence → 5th percentile.
   const howMany: ForecastHowMany = {
     conf50: Math.floor(percentile(hmS, 50)!),
     conf85: Math.floor(percentile(hmS, 15)!),

@@ -121,6 +121,12 @@ describe('getForecast', () => {
     expect(f.when!.conf50.date).toBe(new Date(asOf.getTime() + f.when!.conf50.days * 24 * 3600 * 1000).toISOString().slice(0, 10));
   });
 
+  it('defaults items to 1 when there is no WIP', () => {
+    seedDone(db, 'D-1', '2026-06-24T10:00:00Z'); // throughput exists, but no active issues
+    const f = getForecast(db, { asOf });
+    expect(f.items).toBe(1);
+  });
+
   it('clamps out-of-range inputs and echoes the values used', () => {
     seedDone(db, 'D-1', '2026-06-24T10:00:00Z');
     expect(getForecast(db, { items: 99999, asOf }).items).toBe(1000);
