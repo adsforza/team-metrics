@@ -58,3 +58,14 @@ describe('GET /api/sync/status', () => {
     expect(res.status).toBe(200);
   });
 });
+
+describe('GET /api/metrics/forecast', () => {
+  it('returns 200 with the forecast shape', async () => {
+    const res = await request(app).get('/api/metrics/forecast');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('items');
+    expect(res.body).toHaveProperty('horizonDays');
+    expect(res.body).toHaveProperty('insufficientData');
+    expect(res.body).toHaveProperty('lookbackDays', 84);
+  });
+});
