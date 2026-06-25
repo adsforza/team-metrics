@@ -28,3 +28,46 @@ export function dailyThroughput(db: Database.Database, lookbackDays = LOOKBACK_D
   }
   return buckets;
 }
+
+function pick(daily: number[], rng: () => number): number {
+  return daily[Math.floor(rng() * daily.length)];
+}
+
+export function simulateHowMany(daily: number[], horizon: number, trials: number, rng: () => number): number[] {
+  const out = new Array<number>(trials);
+  for (let t = 0; t < trials; t++) {
+    let sum = 0;
+    for (let d = 0; d < horizon; d++) sum += pick(daily, rng);
+    out[t] = sum;
+  }
+  return out.sort((a, b) => a - b);
+}
+
+export function simulateWhen(daily: number[], items: number, trials: number, rng: () => number, maxDays = MAX_SIM_DAYS): number[] {
+  const out = new Array<number>(trials);
+  for (let t = 0; t < trials; t++) {
+    let done = 0, days = 0;
+    while (done < items && days < maxDays) { done += pick(daily, rng); days++; }
+    out[t] = days;
+  }
+  return out.sort((a, b) => a - b);
+}
+
+// ~20 equal-width bins over the central 90% (p5..p95) of a sorted sample array.
+export function histogram(sortedSamples: number[], bins = 20): ForecastBin[] {
+  const lo = percentile(sortedSamples, 5)!;
+  const hi = percentile(sortedSamples, 95)!;
+  if (hi <= lo) return [{ x: Math.round(lo), count: sortedSamples.length }];
+  const width = (hi - lo) / bins;
+  const out: ForecastBin[] = [];
+  for (let i = 0; i < bins; i++) {
+    const binLo = lo + i * width;
+    const binHi = binLo + width;
+    let count = 0;
+    for (const s of sortedSamples) {
+      if (s >= binLo && (i === bins - 1 ? s <= binHi : s < binHi)) count++;
+    }
+    out.push({ x: Math.round(binLo + width / 2), count });
+  }
+  return out;
+}
