@@ -58,6 +58,12 @@ describe('simulateWhen', () => {
     const samples = simulateWhen(daily, 5, 1000, Math.random);
     for (let i = 1; i < samples.length; i++) expect(samples[i]).toBeGreaterThanOrEqual(samples[i - 1]);
   });
+
+  it('caps the day count at maxDays when items can never be reached', () => {
+    const daily = [0]; // no throughput ever → never reaches items
+    const samples = simulateWhen(daily, 5, 500, Math.random, 730);
+    expect(samples.every(s => s === 730)).toBe(true);
+  });
 });
 
 describe('histogram', () => {
