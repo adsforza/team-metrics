@@ -35,7 +35,7 @@ describe('dailyThroughput', () => {
   });
 });
 
-import { simulateWhen, simulateHowMany, histogram } from './forecast';
+import { simulateWhen, simulateHowMany, histogram, getForecast } from './forecast';
 
 describe('simulateHowMany', () => {
   it('with a constant 1/day history, completes exactly `horizon` items', () => {
@@ -80,5 +80,51 @@ describe('histogram', () => {
     const total = bins.reduce((a, b) => a + b.count, 0);
     expect(total).toBeGreaterThan(850);
     expect(total).toBeLessThanOrEqual(1000);
+  });
+});
+
+function seedActive(db: Database.Database, id: string) {
+  db.prepare(`INSERT INTO issues VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
+    id, `I ${id}`, '', 'In Progress', null, 'M', 0.9, '2026-06-01T00:00:00Z', '2026-06-20T00:00:00Z', '2026-06-25T00:00:00Z', '2026-06-20T00:00:00Z',
+  );
+}
+
+describe('getForecast', () => {
+  let db: Database.Database;
+  const asOf = new Date('2026-06-25T12:00:00Z');
+  beforeEach(() => { db = new Database(':memory:'); applySchema(db); });
+
+  it('flags insufficient data when nothing completed in the window', () => {
+    seedActive(db, 'W-1');
+    const f = getForecast(db, { asOf });
+    expect(f.insufficientData).toBe(true);
+    expect(f.when).toBeNull();
+    expect(f.howMany).toBeNull();
+  });
+
+  it('defaults `items` to the current WIP count', () => {
+    seedActive(db, 'W-1');
+    seedActive(db, 'W-2');
+    seedDone(db, 'D-1', '2026-06-24T10:00:00Z');
+    const f = getForecast(db, { asOf });
+    expect(f.items).toBe(2);
+    expect(f.insufficientData).toBe(false);
+  });
+
+  it('wires confidence levels to the correct tails', () => {
+    for (let d = 0; d < 30; d++) seedDone(db, `X-${d}`, `2026-06-${String((d % 25) + 1).padStart(2, '0')}T10:00:00Z`);
+    const f = getForecast(db, { items: 20, horizon: 14, asOf });
+    expect(f.when!.conf95.days).toBeGreaterThanOrEqual(f.when!.conf85.days);
+    expect(f.when!.conf85.days).toBeGreaterThanOrEqual(f.when!.conf50.days);
+    expect(f.howMany!.conf95).toBeLessThanOrEqual(f.howMany!.conf85);
+    expect(f.howMany!.conf85).toBeLessThanOrEqual(f.howMany!.conf50);
+    expect(f.when!.conf50.date).toBe(new Date(asOf.getTime() + f.when!.conf50.days * 24 * 3600 * 1000).toISOString().slice(0, 10));
+  });
+
+  it('clamps out-of-range inputs and echoes the values used', () => {
+    seedDone(db, 'D-1', '2026-06-24T10:00:00Z');
+    expect(getForecast(db, { items: 99999, asOf }).items).toBe(1000);
+    expect(getForecast(db, { horizon: 9999, asOf }).horizonDays).toBe(365);
+    expect(getForecast(db, { horizon: 0, asOf }).horizonDays).toBe(14);
   });
 });

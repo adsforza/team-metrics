@@ -71,3 +71,61 @@ export function histogram(sortedSamples: number[], bins = 20): ForecastBin[] {
   }
   return out;
 }
+
+const WIP_EXCLUDED = ['Done', 'Finalizada', 'Cancelled', 'Cancelado', 'To Do', 'Tareas por hacer', 'Backlog', 'Por Hacer'];
+const wipIn = WIP_EXCLUDED.map(() => '?').join(',');
+
+function currentWip(db: Database.Database): number {
+  const row = db.prepare(`SELECT COUNT(*) AS c FROM issues WHERE status NOT IN (${wipIn})`).get(...WIP_EXCLUDED) as { c: number };
+  return row.c;
+}
+
+function resolveItems(raw: unknown, wip: number): number {
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n) || n < 1) return Math.max(1, Math.min(1000, wip || 1));
+  return Math.min(1000, n);
+}
+
+function resolveHorizon(raw: unknown): number {
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n) || n < 1) return 14;
+  return Math.min(365, n);
+}
+
+function dayConf(sorted: number[], p: number, asOf: Date): ForecastConfidenceDate {
+  const days = Math.ceil(percentile(sorted, p)!);
+  const date = new Date(asOf.getTime() + days * MS_PER_DAY).toISOString().slice(0, 10);
+  return { days, date };
+}
+
+export interface ForecastOpts { items?: unknown; horizon?: unknown; rng?: () => number; asOf?: Date }
+
+export function getForecast(db: Database.Database, opts: ForecastOpts = {}): ForecastResult {
+  const rng = opts.rng ?? Math.random;
+  const asOf = opts.asOf ?? new Date();
+  const daily = dailyThroughput(db, LOOKBACK_DAYS, asOf);
+  const totalThroughput = daily.reduce((a, b) => a + b, 0);
+  const items = resolveItems(opts.items, currentWip(db));
+  const horizonDays = resolveHorizon(opts.horizon);
+
+  const base = { items, horizonDays, lookbackDays: LOOKBACK_DAYS, trials: TRIALS, totalThroughput };
+  if (totalThroughput === 0) return { ...base, insufficientData: true, when: null, howMany: null };
+
+  const whenS = simulateWhen(daily, items, TRIALS, rng);
+  const when: ForecastWhen = {
+    conf50: dayConf(whenS, 50, asOf),
+    conf85: dayConf(whenS, 85, asOf),
+    conf95: dayConf(whenS, 95, asOf),
+    histogram: histogram(whenS),
+  };
+
+  const hmS = simulateHowMany(daily, horizonDays, TRIALS, rng);
+  const howMany: ForecastHowMany = {
+    conf50: Math.floor(percentile(hmS, 50)!),
+    conf85: Math.floor(percentile(hmS, 15)!),
+    conf95: Math.floor(percentile(hmS, 5)!),
+    histogram: histogram(hmS),
+  };
+
+  return { ...base, insufficientData: false, when, howMany };
+}
