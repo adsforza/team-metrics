@@ -124,3 +124,31 @@ export interface TeamScorecardResponse {
     flow: DimensionContext;
   };
 }
+
+export interface ForecastConfidenceDate { days: number; date: string }
+export interface ForecastBin { x: number; count: number }
+
+export interface ForecastWhen {
+  conf50: ForecastConfidenceDate;
+  conf85: ForecastConfidenceDate;
+  conf95: ForecastConfidenceDate;
+  histogram: ForecastBin[];
+}
+
+export interface ForecastHowMany {
+  conf50: number;  // items (>=)
+  conf85: number;
+  conf95: number;
+  histogram: ForecastBin[];
+}
+
+export interface ForecastResult {
+  items: number;            // item count used for the "when" forecast (echo; default = current WIP)
+  horizonDays: number;      // horizon used for the "how many" forecast (echo; default 14)
+  lookbackDays: number;     // 84
+  trials: number;           // 10000
+  totalThroughput: number;  // total completed in the lookback window
+  insufficientData: boolean;
+  when: ForecastWhen | null;
+  howMany: ForecastHowMany | null;
+}
