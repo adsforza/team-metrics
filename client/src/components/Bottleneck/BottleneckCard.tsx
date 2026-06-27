@@ -35,7 +35,8 @@ function TrendChart({ trend, p85_days }: { trend: BottleneckWeekPoint[]; p85_day
         const isHigh = p85_days !== null && w.avg_days >= p85_days;
         const isMid  = p85_days !== null && w.avg_days >= p85_days * 0.7;
         const barColor = isHigh ? 'bg-red-500' : isMid ? 'bg-amber-500' : 'bg-blue-500/70';
-        const label = new Date(w.week).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
+        const [y, m, d] = w.week.split('-').map(Number);
+        const label = new Date(y, m - 1, d).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
         return (
           <div key={w.week} className="flex flex-col items-center gap-0.5 flex-1 h-full justify-end">
             <span className="text-[8px] text-slate-500 leading-none">{w.avg_days.toFixed(1)}d</span>
