@@ -7,6 +7,7 @@ import { ThroughputChart } from './components/ThroughputChart/ThroughputChart';
 import { AgingWIP } from './components/AgingWIP/AgingWIP';
 import { TeamTable } from './components/TeamTable/TeamTable';
 import { Forecast } from './components/Forecast/Forecast';
+import { WipRisk } from './components/WipRisk/WipRisk';
 import { useMetrics } from './hooks/useMetrics';
 import { useTeam } from './hooks/useTeam';
 import { api } from './lib/api';
@@ -34,6 +35,7 @@ export default function App() {
           <ThroughputChart data={throughput} />
           <AgingWIP issues={aging} />
         </div>
+        <WipRisk />
         <Forecast />
         <div className="border-t border-slate-800 pt-4">
           <p className="text-[10px] uppercase tracking-widest text-slate-700 text-center mb-4">Comparativa del equipo</p>
