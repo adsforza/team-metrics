@@ -69,3 +69,15 @@ describe('GET /api/metrics/forecast', () => {
     expect(res.body).toHaveProperty('lookbackDays', 84);
   });
 });
+
+describe('GET /api/metrics/wip-risk', () => {
+  it('returns 200 with the wip-risk shape', async () => {
+    const res = await request(app).get('/api/metrics/wip-risk');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('lookbackDays', 84);
+    expect(res.body).toHaveProperty('limits');
+    expect(res.body).toHaveProperty('items');
+    expect(res.body).toHaveProperty('counts');
+    expect(Array.isArray(res.body.items)).toBe(true);
+  });
+});

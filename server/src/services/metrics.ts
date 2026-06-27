@@ -34,7 +34,7 @@ function buildWhereClause(params: FilterParams): { where: string; args: any[] } 
   };
 }
 
-function getCycleTimes(db: Database.Database, params: FilterParams): number[] {
+export function getCycleTimes(db: Database.Database, params: FilterParams): number[] {
   const { where, args } = buildWhereClause(params);
   const fromDate = params.from ?? '2000-01-01';
   const toDate = params.to ?? '2099-12-31';

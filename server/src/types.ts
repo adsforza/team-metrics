@@ -152,3 +152,30 @@ export interface ForecastResult {
   when: ForecastWhen | null;
   howMany: ForecastHowMany | null;
 }
+
+export type WipRiskLevel = 'en_riesgo' | 'excedido';
+
+export interface WipRiskItem {
+  issue_id: string;
+  title: string;
+  talla: Talla;                 // non-null: items without talla are excluded
+  status: string;               // current status
+  assignee_id: string | null;
+  age_days: number;             // now − first active entry
+  limit_days: number;           // p85 of the issue's talla
+  ratio: number;                // age_days / limit_days
+  level: WipRiskLevel;
+}
+
+export interface TallaLimit {
+  talla: Talla;
+  limit_days: number | null;    // null when sample_count < MIN_SAMPLES
+  sample_count: number;
+}
+
+export interface WipRiskResult {
+  lookbackDays: number;         // 84
+  limits: TallaLimit[];         // S, M, L, XL
+  items: WipRiskItem[];         // only en_riesgo + excedido, sorted by ratio desc
+  counts: { en_riesgo: number; excedido: number; sin_limite: number };
+}

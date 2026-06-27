@@ -1,6 +1,6 @@
-import type { KPIMetrics, TallaMetric, CFDPoint, ThroughputWeek, AgingIssue, TeamScorecardResponse, PersonScorecard, ScorecardDimensions, DimensionValue, DimensionContext, Issue, TeamMember, ForecastResult, ForecastWhen, ForecastHowMany, ForecastBin } from '../../../server/src/types';
+import type { KPIMetrics, TallaMetric, CFDPoint, ThroughputWeek, AgingIssue, TeamScorecardResponse, PersonScorecard, ScorecardDimensions, DimensionValue, DimensionContext, Issue, TeamMember, ForecastResult, ForecastWhen, ForecastHowMany, ForecastBin, WipRiskResult, WipRiskItem, TallaLimit, WipRiskLevel } from '../../../server/src/types';
 
-export type { KPIMetrics, TallaMetric, CFDPoint, ThroughputWeek, AgingIssue, TeamScorecardResponse, PersonScorecard, ScorecardDimensions, DimensionValue, DimensionContext, Issue, TeamMember, ForecastResult, ForecastWhen, ForecastHowMany, ForecastBin };
+export type { KPIMetrics, TallaMetric, CFDPoint, ThroughputWeek, AgingIssue, TeamScorecardResponse, PersonScorecard, ScorecardDimensions, DimensionValue, DimensionContext, Issue, TeamMember, ForecastResult, ForecastWhen, ForecastHowMany, ForecastBin, WipRiskResult, WipRiskItem, TallaLimit, WipRiskLevel };
 
 function buildQuery(params: Record<string, string | undefined>): string {
   const q = Object.entries(params)
@@ -23,6 +23,7 @@ export const api = {
   metricsThroughput: (p: Record<string, string | undefined> = {}) => get<ThroughputWeek[]>('/metrics/throughput', p),
   metricsAging: (p: Record<string, string | undefined> = {}) => get<AgingIssue[]>('/metrics/aging', p),
   forecast: (p: Record<string, string | undefined> = {}) => get<ForecastResult>('/metrics/forecast', p),
+  wipRisk: () => get<WipRiskResult>('/metrics/wip-risk'),
   team: (p: Record<string, string | undefined> = {}) => get<TeamScorecardResponse>('/team', p),
   teamMembers: () => get<TeamMember[]>('/team/members'),
   issues: (p: Record<string, string | undefined> = {}) => get<Issue[]>('/issues', p),
