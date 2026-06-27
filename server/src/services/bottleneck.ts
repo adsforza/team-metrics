@@ -67,15 +67,15 @@ function getDwellRows(db: Database.Database, from: string): DwellRow[] {
                 AND  t2.from_status = t1.to_status
                 AND  t2.transitioned_at > t1.transitioned_at) AS exited_at
       FROM   transitions t1
-      WHERE  t1.transitioned_at >= ?
-        AND  t1.to_status NOT IN (${excludedIn})
+      WHERE  t1.to_status NOT IN (${excludedIn})
     )
     SELECT e.issue_id, e.status, e.entered_at, e.exited_at, i.talla
     FROM   e
     JOIN   issues i ON i.id = e.issue_id
     WHERE  e.exited_at IS NOT NULL
+      AND  e.exited_at >= ?
     ORDER  BY e.status, e.entered_at
-  `).all(from, ...EXCLUDED) as DwellRow[];
+  `).all(...EXCLUDED, from) as DwellRow[];
 }
 
 function getCurrentIssues(db: Database.Database): CurrentIssueRow[] {
@@ -92,6 +92,7 @@ function getCurrentIssues(db: Database.Database): CurrentIssueRow[] {
 function assignScores(combined: number[]): BottleneckScore[] {
   const n = combined.length;
   if (n === 0) return [];
+  if (n === 1) return ['normal'];
   const indices = combined.map((_, i) => i).sort((a, b) => combined[b] - combined[a]);
   const scores = new Array<BottleneckScore>(n);
   indices.forEach((origIdx, rank) => {
