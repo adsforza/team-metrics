@@ -81,6 +81,21 @@ describe('histogram', () => {
     expect(total).toBeGreaterThan(850);
     expect(total).toBeLessThanOrEqual(1000);
   });
+
+  it('uses one bin per integer when range is small (avoids duplicate x labels)', () => {
+    // Simulate a "when" result with days 1–4 (as Monte Carlo would produce)
+    const samples = [
+      ...Array(600).fill(1),
+      ...Array(250).fill(2),
+      ...Array(100).fill(3),
+      ...Array(50).fill(4),
+    ];
+    const bins = histogram(samples);
+    const xs = bins.map(b => b.x);
+    expect(new Set(xs).size).toBe(xs.length); // no duplicate x labels
+    expect(bins.find(b => b.x === 1)!.count).toBeGreaterThan(0);
+    expect(bins.find(b => b.x === 2)!.count).toBeGreaterThan(0);
+  });
 });
 
 function seedActive(db: Database.Database, id: string) {

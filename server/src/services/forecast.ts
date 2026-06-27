@@ -53,11 +53,22 @@ export function simulateWhen(daily: number[], items: number, trials: number, rng
   return out.sort((a, b) => a - b);
 }
 
-// ~20 equal-width bins over the central 90% (p5..p95) of a sorted sample array.
+// Bins over the central 90% (p5..p95) of a sorted sample array.
+// When the integer range fits in ≤20 buckets, uses one bin per integer value
+// to avoid duplicate x labels and empty bars on small ranges (e.g. 1–4 days).
 export function histogram(sortedSamples: number[], bins = 20): ForecastBin[] {
   const lo = percentile(sortedSamples, 5)!;
   const hi = percentile(sortedSamples, 95)!;
   if (hi <= lo) return [{ x: Math.round(lo), count: sortedSamples.length }];
+  const loInt = Math.round(lo);
+  const hiInt = Math.round(hi);
+  if (hiInt - loInt <= bins) {
+    const out: ForecastBin[] = [];
+    for (let v = loInt; v <= hiInt; v++) {
+      out.push({ x: v, count: sortedSamples.filter(s => Math.round(s) === v).length });
+    }
+    return out;
+  }
   const width = (hi - lo) / bins;
   const out: ForecastBin[] = [];
   for (let i = 0; i < bins; i++) {
