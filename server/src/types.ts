@@ -179,3 +179,46 @@ export interface WipRiskResult {
   items: WipRiskItem[];         // only en_riesgo + excedido, sorted by ratio desc
   counts: { en_riesgo: number; excedido: number; sin_limite: number };
 }
+
+export type BottleneckScore = 'crítico' | 'alto' | 'medio' | 'normal';
+
+export interface BottleneckTopIssue {
+  issue_id: string;
+  title: string;
+  talla: Talla | null;
+  days_in_state: number;
+}
+
+export interface BottleneckTallaBreakdown {
+  talla: Talla;
+  avg_days: number;
+  count: number;
+}
+
+export interface BottleneckWeekPoint {
+  week: string;     // ISO date of Monday (YYYY-MM-DD)
+  avg_days: number;
+}
+
+export interface BottleneckStateDetail {
+  p85_days: number | null;
+  pct_of_wip: number;        // state.queue_size / result.total_active
+  trend_pct: number | null;  // % change from first to last trend point; null if <2 points
+  trend: BottleneckWeekPoint[];
+  top_issues: BottleneckTopIssue[];  // up to 8, sorted by days_in_state desc
+  by_talla: BottleneckTallaBreakdown[];
+}
+
+export interface BottleneckState {
+  status: string;
+  queue_size: number;
+  avg_days: number | null;  // avg dwell time from completed passes (last 8 weeks); null if <3 samples
+  score: BottleneckScore;
+  detail: BottleneckStateDetail;
+}
+
+export interface BottleneckResult {
+  lookbackWeeks: number;   // 8
+  total_active: number;
+  states: BottleneckState[];  // sorted: severity desc, then queue_size desc
+}
