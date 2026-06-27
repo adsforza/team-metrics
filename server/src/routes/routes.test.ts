@@ -81,3 +81,22 @@ describe('GET /api/metrics/wip-risk', () => {
     expect(Array.isArray(res.body.items)).toBe(true);
   });
 });
+
+describe('GET /api/metrics/bottleneck', () => {
+  it('returns 200 with BottleneckResult shape', async () => {
+    const res = await request(app).get('/api/metrics/bottleneck');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('lookbackWeeks', 8);
+    expect(typeof res.body.total_active).toBe('number');
+    expect(Array.isArray(res.body.states)).toBe(true);
+    // The mock DB has 1 issue in 'In Progress' (seeded at top of routes.test.ts)
+    if (res.body.states.length > 0) {
+      const s = res.body.states[0];
+      expect(s).toHaveProperty('status');
+      expect(s).toHaveProperty('queue_size');
+      expect(s).toHaveProperty('score');
+      expect(s).toHaveProperty('detail');
+      expect(Array.isArray(s.detail.top_issues)).toBe(true);
+    }
+  });
+});
