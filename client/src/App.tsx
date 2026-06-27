@@ -8,6 +8,7 @@ import { AgingWIP } from './components/AgingWIP/AgingWIP';
 import { TeamTable } from './components/TeamTable/TeamTable';
 import { Forecast } from './components/Forecast/Forecast';
 import { WipRisk } from './components/WipRisk/WipRisk';
+import { Bottleneck } from './components/Bottleneck/Bottleneck';
 import { useMetrics } from './hooks/useMetrics';
 import { useTeam } from './hooks/useTeam';
 import { api } from './lib/api';
@@ -31,6 +32,7 @@ export default function App() {
           <div className="col-span-3"><CFDChart data={cfd} /></div>
           <div className="col-span-2"><ScatterPlot issues={issues} kpis={kpis} /></div>
         </div>
+        <Bottleneck />
         <div className="grid grid-cols-2 gap-4">
           <ThroughputChart data={throughput} />
           <AgingWIP issues={aging} />
