@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { getDb } from '../db/index';
 import { getKPIs, getCycleTimeByTalla, getCFD, getThroughputWeekly, getAgingWIP } from '../services/metrics';
 import { getForecast } from '../services/forecast';
+import { getWipRisk } from '../services/wipRisk';
 import type { FilterParams } from '../types';
 
 const router = Router();
@@ -53,6 +54,14 @@ router.get('/aging', (req, res, next) => {
 router.get('/forecast', (req, res, next) => {
   try {
     res.json(getForecast(getDb(), { items: req.query.items, horizon: req.query.horizon }));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/wip-risk', (_req, res, next) => {
+  try {
+    res.json(getWipRisk(getDb()));
   } catch (err) {
     next(err);
   }
