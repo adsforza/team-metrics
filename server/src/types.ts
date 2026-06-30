@@ -222,3 +222,17 @@ export interface BottleneckResult {
   total_active: number;
   states: BottleneckState[];  // sorted: severity desc, then queue_size desc
 }
+
+export interface ComparisonPeriod {
+  current: number;
+  previous: number;
+  delta: number;
+  deltaPct: number | null;   // null when previous === 0
+}
+
+export interface ComparisonResult {
+  week: string;       // YYYY-MM-DD, Monday of the selected week
+  prevWeek: string;   // YYYY-MM-DD, Monday of the previous week
+  throughput: ComparisonPeriod;
+  wip: ComparisonPeriod;
+}
