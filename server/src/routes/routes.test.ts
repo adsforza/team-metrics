@@ -100,3 +100,16 @@ describe('GET /api/metrics/bottleneck', () => {
     }
   });
 });
+
+describe('GET /api/metrics/comparison', () => {
+  it('returns 200 with ComparisonResult shape', async () => {
+    const res = await request(app).get('/api/metrics/comparison');
+    expect(res.status).toBe(200);
+    expect(typeof res.body.week).toBe('string');
+    expect(typeof res.body.prevWeek).toBe('string');
+    expect(typeof res.body.throughput.current).toBe('number');
+    expect(typeof res.body.throughput.delta).toBe('number');
+    expect(typeof res.body.wip.current).toBe('number');
+    expect(typeof res.body.wip.delta).toBe('number');
+  });
+});

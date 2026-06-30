@@ -4,6 +4,7 @@ import { getKPIs, getCycleTimeByTalla, getCFD, getThroughputWeekly, getAgingWIP 
 import { getForecast } from '../services/forecast';
 import { getWipRisk } from '../services/wipRisk';
 import { getBottleneck } from '../services/bottleneck';
+import { getComparison } from '../services/comparison';
 import type { FilterParams } from '../types';
 
 const router = Router();
@@ -70,6 +71,13 @@ router.get('/wip-risk', (_req, res, next) => {
 
 router.get('/bottleneck', (_req, res, next) => {
   try { res.json(getBottleneck(getDb())); } catch (err) { next(err); }
+});
+
+router.get('/comparison', (req, res, next) => {
+  try {
+    const week = typeof req.query.week === 'string' ? req.query.week : undefined;
+    res.json(getComparison(getDb(), { week }));
+  } catch (err) { next(err); }
 });
 
 export default router;
