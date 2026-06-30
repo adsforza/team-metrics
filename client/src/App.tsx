@@ -9,6 +9,7 @@ import { TeamTable } from './components/TeamTable/TeamTable';
 import { Forecast } from './components/Forecast/Forecast';
 import { WipRisk } from './components/WipRisk/WipRisk';
 import { Bottleneck } from './components/Bottleneck/Bottleneck';
+import { Comparison } from './components/Comparison/Comparison';
 import { useMetrics } from './hooks/useMetrics';
 import { useTeam } from './hooks/useTeam';
 import { api } from './lib/api';
@@ -26,6 +27,7 @@ export default function App() {
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <Header />
       <main className="px-6 py-4 flex flex-col gap-4">
+        <Comparison />
         <KPICards kpis={kpis} loading={loading} />
         <CycleTimeByTalla metrics={byTalla} />
         <div className="grid grid-cols-5 gap-4">
