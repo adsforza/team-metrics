@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <!-- Background -->
+  <rect width="200" height="200" rx="40" fill="#1e293b"/>
+  <!-- Column 1: Todo (gray, short) -->
+  <rect x="28" y="108" width="40" height="64" rx="6" fill="#4A5568"/>
+  <rect x="28" y="88"  width="40" height="16" rx="4" fill="#4A5568"/>
+  <!-- Flow arrow 1→2 -->
+  <path d="M70 140 L82 140" stroke="#3182CE" stroke-width="3" stroke-linecap="round"/>
+  <path d="M79 136 L84 140 L79 144" stroke="#3182CE" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Column 2: In Progress (blue, medium) -->
+  <rect x="84" y="68"  width="40" height="104" rx="6" fill="#3182CE"/>
+  <!-- Flow arrow 2→3 -->
+  <path d="M126 140 L138 140" stroke="#63B3ED" stroke-width="3" stroke-linecap="round"/>
+  <path d="M135 136 L140 140 L135 144" stroke="#63B3ED" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Column 3: Done (blue light, tall) -->
+  <rect x="140" y="28" width="40" height="144" rx="6" fill="#63B3ED"/>
+  <!-- Checkmark on done column -->
+  <path d="M152 110 L158 117 L172 100" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>
