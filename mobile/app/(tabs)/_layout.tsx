@@ -1,17 +1,9 @@
 import { Tabs } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { ColorValue } from 'react-native';
+import { Colors } from '../../lib/theme';
 
 type FeatherName = React.ComponentProps<typeof Feather>['name'];
-
-const C = {
-  primary: '#3182CE',
-  textSubtle: '#4A5568',
-  bgMuted: '#171923',
-  border: '#2d3748',
-  bg: '#0f172a',
-  text: '#F7FAFC',
-};
 
 function tabIcon(name: FeatherName) {
   return ({ color, size }: { color: ColorValue; size: number }) => (
@@ -23,11 +15,15 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: C.primary,
-        tabBarInactiveTintColor: C.textSubtle,
-        tabBarStyle: { backgroundColor: C.bgMuted, borderTopColor: C.border, borderTopWidth: 1 },
-        headerStyle: { backgroundColor: C.bg },
-        headerTintColor: C.text,
+        tabBarActiveTintColor: Colors.primary,
+        tabBarInactiveTintColor: Colors.textSubtle,
+        tabBarStyle: {
+          backgroundColor: Colors.bgMuted,
+          borderTopColor: Colors.border,
+          borderTopWidth: 1,
+        },
+        headerStyle: { backgroundColor: Colors.bg },
+        headerTintColor: Colors.text,
         headerTitleStyle: { fontWeight: '600' },
         tabBarLabelStyle: { fontSize: 10 },
       }}
