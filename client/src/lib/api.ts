@@ -1,6 +1,6 @@
-import type { KPIMetrics, TallaMetric, CFDPoint, ThroughputWeek, AgingIssue, TeamScorecardResponse, PersonScorecard, ScorecardDimensions, DimensionValue, DimensionContext, Issue, TeamMember, ForecastResult, ForecastWhen, ForecastHowMany, ForecastBin, WipRiskResult, WipRiskItem, TallaLimit, WipRiskLevel, BottleneckResult, BottleneckState, BottleneckStateDetail, BottleneckTopIssue, BottleneckTallaBreakdown, BottleneckWeekPoint, BottleneckScore } from '../../../server/src/types';
+import type { KPIMetrics, TallaMetric, CFDPoint, ThroughputWeek, AgingIssue, TeamScorecardResponse, PersonScorecard, ScorecardDimensions, DimensionValue, DimensionContext, Issue, TeamMember, ForecastResult, ForecastWhen, ForecastHowMany, ForecastBin, WipRiskResult, WipRiskItem, TallaLimit, WipRiskLevel, BottleneckResult, BottleneckState, BottleneckStateDetail, BottleneckTopIssue, BottleneckTallaBreakdown, BottleneckWeekPoint, BottleneckScore, ComparisonResult, ComparisonPeriod } from '../../../server/src/types';
 
-export type { KPIMetrics, TallaMetric, CFDPoint, ThroughputWeek, AgingIssue, TeamScorecardResponse, PersonScorecard, ScorecardDimensions, DimensionValue, DimensionContext, Issue, TeamMember, ForecastResult, ForecastWhen, ForecastHowMany, ForecastBin, WipRiskResult, WipRiskItem, TallaLimit, WipRiskLevel, BottleneckResult, BottleneckState, BottleneckStateDetail, BottleneckTopIssue, BottleneckTallaBreakdown, BottleneckWeekPoint, BottleneckScore };
+export type { KPIMetrics, TallaMetric, CFDPoint, ThroughputWeek, AgingIssue, TeamScorecardResponse, PersonScorecard, ScorecardDimensions, DimensionValue, DimensionContext, Issue, TeamMember, ForecastResult, ForecastWhen, ForecastHowMany, ForecastBin, WipRiskResult, WipRiskItem, TallaLimit, WipRiskLevel, BottleneckResult, BottleneckState, BottleneckStateDetail, BottleneckTopIssue, BottleneckTallaBreakdown, BottleneckWeekPoint, BottleneckScore, ComparisonResult, ComparisonPeriod };
 
 function buildQuery(params: Record<string, string | undefined>): string {
   const q = Object.entries(params)
@@ -25,6 +25,7 @@ export const api = {
   forecast: (p: Record<string, string | undefined> = {}) => get<ForecastResult>('/metrics/forecast', p),
   wipRisk: () => get<WipRiskResult>('/metrics/wip-risk'),
   bottleneck: () => get<BottleneckResult>('/metrics/bottleneck'),
+  comparison: (week?: string) => get<ComparisonResult>(`/metrics/comparison${week ? `?week=${encodeURIComponent(week)}` : ''}`),
   team: (p: Record<string, string | undefined> = {}) => get<TeamScorecardResponse>('/team', p),
   teamMembers: () => get<TeamMember[]>('/team/members'),
   issues: (p: Record<string, string | undefined> = {}) => get<Issue[]>('/issues', p),
