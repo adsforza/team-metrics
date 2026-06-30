@@ -53,24 +53,17 @@ function insight(r: ComparisonResult): string {
 function MetricBlock({ label, p, metric }: { label: string; p: ComparisonPeriod; metric: 'throughput' | 'wip' }) {
   const col = deltaColor(p.delta, metric);
   return (
-    <div className="bg-slate-800/50 rounded-lg p-4">
-      <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-3">{label}</div>
-      <div className="flex items-end gap-6">
-        <div>
-          <div className="text-[11px] text-slate-400 mb-1">Esta semana</div>
-          <div className="text-3xl font-bold text-slate-100 leading-none">{p.current}</div>
-        </div>
-        <div className={`flex flex-col items-center pb-1 ${col}`}>
-          <span className="text-xl font-semibold leading-none">{arrow(p.delta)}</span>
-          <span className="text-sm font-semibold">{p.delta > 0 ? '+' : ''}{p.delta}</span>
+    <div className="bg-slate-900/60 rounded-lg p-4">
+      <div className="text-[9px] uppercase tracking-wide text-slate-500 mb-2">{label}</div>
+      <div className="flex items-baseline gap-3">
+        <span className="text-3xl font-bold text-slate-100 leading-none">{p.current}</span>
+        <span className={`text-sm font-semibold ${col}`}>
+          {arrow(p.delta)} {p.delta > 0 ? '+' : ''}{p.delta}
           {p.deltaPct !== null && (
-            <span className="text-[10px]">{p.delta > 0 ? '+' : ''}{p.deltaPct}%</span>
+            <span className="text-[10px] font-normal ml-0.5">({p.delta > 0 ? '+' : ''}{p.deltaPct}%)</span>
           )}
-        </div>
-        <div>
-          <div className="text-[11px] text-slate-400 mb-1">Sem. anterior</div>
-          <div className="text-3xl font-bold text-slate-500 leading-none">{p.previous}</div>
-        </div>
+        </span>
+        <span className="text-2xl font-bold text-slate-600 leading-none ml-auto">{p.previous}</span>
       </div>
     </div>
   );
@@ -81,7 +74,7 @@ export function ComparisonCard({ result, loading, week, setWeek }: Props) {
 
   return (
     <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3">
         <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Comparativa semanal</h3>
         <select
           value={week ?? ''}
@@ -106,6 +99,18 @@ export function ComparisonCard({ result, loading, week, setWeek }: Props) {
         </div>
       ) : (
         <>
+          <div className="flex items-center -mx-4 border-y border-slate-700 mb-3">
+            <div className="flex-1 px-4 py-2 bg-blue-900/10">
+              <div className="text-[9px] uppercase tracking-wide text-blue-400 mb-0.5">Esta semana</div>
+              <div className="text-[13px] font-semibold text-slate-200">{formatWeekLabel(result.week)}</div>
+            </div>
+            <div className="px-3 text-slate-600 text-lg font-light">vs</div>
+            <div className="flex-1 px-4 py-2">
+              <div className="text-[9px] uppercase tracking-wide text-slate-500 mb-0.5">Semana anterior</div>
+              <div className="text-[13px] font-semibold text-slate-400">{formatWeekLabel(result.prevWeek)}</div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3 mb-3">
             <MetricBlock label="Throughput" p={result.throughput} metric="throughput" />
             <MetricBlock label="WIP al cierre" p={result.wip} metric="wip" />
