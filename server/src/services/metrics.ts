@@ -42,9 +42,10 @@ export function getCycleTimes(db: Database.Database, params: FilterParams): numb
   const rows = db.prepare(`
     SELECT
       MIN(t_start.transitioned_at) AS start_at,
-      t_end.transitioned_at        AS end_at
+      t_end.transitioned_at        AS end_at,
+      i.talla
     FROM issues i
-    JOIN transitions t_start ON t_start.issue_id = i.id AND t_start.to_status IN ('In Progress','IN PROGRESS','EN CURSO','In development')
+    JOIN transitions t_start ON t_start.issue_id = i.id AND t_start.to_status IN ('In Progress','IN PROGRESS','EN CURSO','In development','To Do','TO DO','Tareas por hacer','Por Hacer','Backlog')
     JOIN transitions t_end   ON t_end.issue_id   = i.id AND t_end.to_status   IN ('Done','Finalizada')
     ${where ? where.replace('WHERE', 'WHERE') : 'WHERE 1=1'}
       AND t_end.transitioned_at >= ? AND t_end.transitioned_at <= ?
@@ -52,9 +53,12 @@ export function getCycleTimes(db: Database.Database, params: FilterParams): numb
     ORDER BY start_at
   `).all(...args, fromDate + 'T00:00:00Z', toDate + 'T23:59:59Z') as any[];
 
+  const minDays: Record<string, number> = { XL: 1, L: 4 / 24, M: 1 / 24, S: 1 / 24 };
+
   return rows
-    .map(r => (new Date(r.end_at).getTime() - new Date(r.start_at).getTime()) / (1000 * 60 * 60 * 24))
-    .filter(ct => ct >= 1 / 24)  // descartar batch-moves (< 1 hora)
+    .map(r => ({ ct: (new Date(r.end_at).getTime() - new Date(r.start_at).getTime()) / (1000 * 60 * 60 * 24), talla: r.talla }))
+    .filter(({ ct, talla }) => ct >= (minDays[talla] ?? 1 / 24))
+    .map(({ ct }) => ct)
     .sort((a, b) => a - b);
 }
 

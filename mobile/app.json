@@ -23,7 +23,6 @@
       "package": "com.teammetrics.mobile"
     },
     "plugins": ["expo-router"],
-    "scheme": "teammetrics",
-    "web": { "bundler": "metro" }
+    "scheme": "teammetrics"
   }
 }
