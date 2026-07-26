@@ -2,7 +2,7 @@ import * as SQLite from 'expo-sqlite';
 import type {
   KPIMetrics, ThroughputWeek, AgingIssue,
   WipRiskResult, BottleneckResult, ForecastResult,
-  ComparisonResult, CFDPoint, Issue,
+  ComparisonResult, CFDPoint, Issue, TeamScorecardResponse, TallaMetric,
 } from './types';
 
 let _db: SQLite.SQLiteDatabase | null = null;
@@ -54,6 +54,12 @@ async function initSchema(db: SQLite.SQLiteDatabase): Promise<void> {
       date TEXT PRIMARY KEY, todo INTEGER, in_progress INTEGER,
       in_review INTEGER, in_qa INTEGER, done INTEGER
     );
+    CREATE TABLE IF NOT EXISTS scorecard_context_snapshot (
+      id INTEGER PRIMARY KEY DEFAULT 1, context_json TEXT, synced_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS by_talla_snapshot (
+      id INTEGER PRIMARY KEY DEFAULT 1, result_json TEXT, synced_at TEXT
+    );
   `);
 }
 
@@ -72,6 +78,11 @@ export async function readThroughput(db: SQLite.SQLiteDatabase): Promise<Through
     'SELECT week, count, by_talla FROM throughput_weekly ORDER BY week ASC LIMIT 12'
   );
   return rows.map(r => ({ ...r, by_talla: JSON.parse(r.by_talla) }));
+}
+
+export async function readScorecardContext(db: SQLite.SQLiteDatabase): Promise<TeamScorecardResponse['context'] | null> {
+  const row = await db.getFirstAsync<{ context_json: string }>('SELECT context_json FROM scorecard_context_snapshot WHERE id = 1');
+  return row ? JSON.parse(row.context_json) : null;
 }
 
 export async function readScorecardMembers(db: SQLite.SQLiteDatabase) {
@@ -102,11 +113,35 @@ export async function readForecast(db: SQLite.SQLiteDatabase): Promise<ForecastR
   return row ? JSON.parse(row.result_json) : null;
 }
 
-export async function readComparison(db: SQLite.SQLiteDatabase): Promise<ComparisonResult | null> {
-  const row = await db.getFirstAsync<{ result_json: string }>(
-    'SELECT result_json FROM comparison_snapshot ORDER BY week DESC LIMIT 1'
-  );
+export async function readComparison(db: SQLite.SQLiteDatabase, week?: string): Promise<ComparisonResult | null> {
+  const row = week
+    ? await db.getFirstAsync<{ result_json: string }>('SELECT result_json FROM comparison_snapshot WHERE week = ?', [week])
+    : await db.getFirstAsync<{ result_json: string }>('SELECT result_json FROM comparison_snapshot ORDER BY week DESC LIMIT 1');
   return row ? JSON.parse(row.result_json) : null;
+}
+
+export async function readComparisonWeeks(db: SQLite.SQLiteDatabase): Promise<string[]> {
+  const rows = await db.getAllAsync<{ week: string }>('SELECT week FROM comparison_snapshot ORDER BY week DESC');
+  return rows.map(r => r.week);
+}
+
+export async function readCycleTimeByTalla(db: SQLite.SQLiteDatabase): Promise<Record<string, number | null>> {
+  const row = await db.getFirstAsync<{ result_json: string }>('SELECT result_json FROM by_talla_snapshot WHERE id = 1');
+  if (!row) return { S: null, M: null, L: null, XL: null };
+  const metrics: TallaMetric[] = JSON.parse(row.result_json);
+  const result: Record<string, number | null> = {};
+  for (const m of metrics) result[m.talla] = m.ct_p50;
+  return result;
+}
+
+export async function readTeamMemberNames(db: SQLite.SQLiteDatabase): Promise<{ id: string; name: string }[]> {
+  const rows = await db.getAllAsync<{ member_id: string; member_json: string }>(
+    "SELECT member_id, member_json FROM scorecard_members WHERE member_id != '__team__' ORDER BY member_id ASC"
+  );
+  return rows.map(r => {
+    const parsed = JSON.parse(r.member_json);
+    return { id: r.member_id, name: parsed.member?.display_name ?? r.member_id };
+  });
 }
 
 export async function readIssues(db: SQLite.SQLiteDatabase): Promise<Issue[]> {

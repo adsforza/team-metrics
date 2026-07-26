@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const BASE_URL_KEY = 'base_url';
+export const JIRA_BASE_URL_KEY = 'jira_base_url';
 export const DEFAULT_BASE_URL = 'http://localhost:3001';
 
 export async function getBaseUrl(): Promise<string> {

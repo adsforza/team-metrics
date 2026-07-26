@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LAST_SYNCED_KEY, performSync, SyncError } from '../lib/sync';
+import { dateRangeFor, useFilterStore } from './filterStore';
 
 interface SyncState {
   loading: boolean;
@@ -26,7 +27,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     if (get().loading) return;
     set({ loading: true, errors: [] });
     try {
-      const result = await performSync();
+      const { timeRange, assignee } = useFilterStore.getState();
+      const result = await performSync(dateRangeFor(timeRange), assignee);
       set({
         loading: false,
         lastSyncedAt: result.syncedAt,

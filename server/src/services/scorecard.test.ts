@@ -163,4 +163,51 @@ describe('getTeamScorecard', () => {
     expect(sc.members[0].delivery.value).toBe(4);   // L (4) excluded by the talla filter
     expect(sc.team.delivery.value).toBe(4);
   });
+
+  it('reports regressions and blocked as a percentage of completed issues', () => {
+    // A-1 regressed (Prioritized → back to In Progress) and passed through Blocked.
+    seedIssue(db, 'A-1', 'u1', 'M', '2026-06-08T00:00:00Z', [
+      ['In Progress', '2026-06-09T09:00:00Z'],
+      ['Prioritized', '2026-06-10T09:00:00Z'],  // rank 3 (committed stage)
+      ['In Progress', '2026-06-11T09:00:00Z'],  // rank 2 → backward from >= 3 → regression
+      ['Blocked',     '2026-06-12T09:00:00Z'],
+      ['Done',        '2026-06-13T09:00:00Z'],
+    ]);
+    // A-2 is clean: straight through, never blocked, never backwards.
+    seedIssue(db, 'A-2', 'u1', 'M', '2026-06-08T00:00:00Z', [
+      ['In Progress', '2026-06-09T09:00:00Z'],
+      ['Done',        '2026-06-11T09:00:00Z'],
+    ]);
+    const sc = getTeamScorecard(db, params);
+    expect(sc.members[0].regressions.value).toBe(50); // 1 of 2 regressed
+    expect(sc.members[0].blocked.value).toBe(50);     // 1 of 2 blocked
+    // lower is better for both, so the null-previous case is steady.
+    expect(sc.members[0].regressions.improving).toBe('steady');
+  });
+
+  it('ignores early-stage churn and Blocked when detecting regressions', () => {
+    // A-1 goes backwards only below the committed stage (In Progress → To Do) and is blocked;
+    // neither should register as a regression.
+    seedIssue(db, 'A-1', 'u1', 'M', '2026-06-08T00:00:00Z', [
+      ['In Progress', '2026-06-09T09:00:00Z'],  // rank 2
+      ['To Do',       '2026-06-10T09:00:00Z'],  // rank 1, but prev rank 2 < 3 → not a regression
+      ['In Progress', '2026-06-11T09:00:00Z'],
+      ['Blocked',     '2026-06-12T09:00:00Z'],  // skipped by regression detection
+      ['Done',        '2026-06-13T09:00:00Z'],
+    ]);
+    seedIssue(db, 'A-2', 'u1', 'M', '2026-06-08T00:00:00Z', [
+      ['In Progress', '2026-06-09T09:00:00Z'],
+      ['Done',        '2026-06-11T09:00:00Z'],
+    ]);
+    const sc = getTeamScorecard(db, params);
+    expect(sc.members[0].regressions.value).toBe(0);  // early churn is not a regression
+    expect(sc.members[0].blocked.value).toBe(50);     // A-1 still counts as blocked
+  });
+
+  it('adds regressions/blocked to the team context band', () => {
+    const sc = getTeamScorecard(db, params);
+    // Even with no data the context keys exist (zeroed), so the client can render six columns.
+    expect(sc.context.regressions).toEqual({ min: 0, median: 0, max: 0 });
+    expect(sc.context.blocked).toEqual({ min: 0, median: 0, max: 0 });
+  });
 });

@@ -6,6 +6,7 @@ import { Colors, Card, Typography } from '../../lib/theme';
 import { BASE_URL_KEY, DEFAULT_BASE_URL, setBaseUrl } from '../../lib/api';
 import { useSyncStore } from '../../store/syncStore';
 import { useFilterStore } from '../../store/filterStore';
+import { getDb, readTeamMemberNames } from '../../lib/db';
 
 const TALLA_OPTIONS = ['S', 'M', 'L', 'XL'] as const;
 
@@ -14,8 +15,15 @@ export default function AjustesScreen() {
   const { sync, loading, lastSyncedAt } = useSyncStore();
   const { assignee, talla, setAssignee, setTalla } = useFilterStore();
 
+  const handleSetAssignee = (id: string | null) => {
+    setAssignee(id);
+    sync();
+  };
+  const [members, setMembers] = useState<{ id: string; name: string }[]>([]);
+
   useEffect(() => {
     AsyncStorage.getItem(BASE_URL_KEY).then(v => { if (v) setUrl(v); });
+    getDb().then(db => readTeamMemberNames(db)).then(setMembers).catch(console.error);
   }, []);
 
   const handleUrlBlur = () => setBaseUrl(url);
@@ -26,6 +34,8 @@ export default function AjustesScreen() {
     if (currentErrors.length > 0) {
       Alert.alert('Sync parcial', `${currentErrors.length} endpoint(s) fallaron:\n${currentErrors.map(e => e.endpoint).join('\n')}`);
     }
+    // Reload members after sync
+    getDb().then(db => readTeamMemberNames(db)).then(setMembers).catch(console.error);
   };
 
   const fmtDate = (iso: string) =>
@@ -72,24 +82,39 @@ export default function AjustesScreen() {
       {/* Filtros globales */}
       <Text style={[Typography.label, s.sectionLabel]}>Filtros globales</Text>
       <View style={Card.base}>
-        <Text style={[Typography.label, { marginBottom: 6 }]}>Persona</Text>
-        <TouchableOpacity
-          style={s.selectBox}
-          onPress={() => setAssignee(assignee ? null : 'me')}
-        >
-          <Text style={s.selectText}>{assignee ?? 'Todos'}</Text>
-          <Feather name="chevron-down" size={14} color={Colors.textSubtle} />
-        </TouchableOpacity>
+        <Text style={[Typography.label, { marginBottom: 10 }]}>Persona</Text>
+        <View style={s.chipRow}>
+          <TouchableOpacity
+            style={[s.chip, assignee === null && s.chipActive]}
+            onPress={() => handleSetAssignee(null)}
+          >
+            <Text style={[s.chipText, assignee === null && s.chipTextActive]}>Todos</Text>
+          </TouchableOpacity>
+          {members.map(m => (
+            <TouchableOpacity
+              key={m.id}
+              style={[s.chip, assignee === m.id && s.chipActive]}
+              onPress={() => handleSetAssignee(assignee === m.id ? null : m.id)}
+            >
+              <Text style={[s.chipText, assignee === m.id && s.chipTextActive]} numberOfLines={1}>
+                {m.name.split(' ')[0]}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        {members.length === 0 && (
+          <Text style={s.hint}>Sincronizá para ver el listado de personas.</Text>
+        )}
 
-        <Text style={[Typography.label, { marginBottom: 6, marginTop: 12 }]}>Talla</Text>
-        <View style={s.tallaRow}>
+        <Text style={[Typography.label, { marginBottom: 10, marginTop: 16 }]}>Talla</Text>
+        <View style={s.chipRow}>
           {([null, ...TALLA_OPTIONS] as const).map(t => (
             <TouchableOpacity
               key={String(t)}
-              style={[s.tallaChip, talla === t && s.tallaChipActive]}
+              style={[s.chip, talla === t && s.chipActive]}
               onPress={() => setTalla(t)}
             >
-              <Text style={[s.tallaText, talla === t && s.tallaTextActive]}>
+              <Text style={[s.chipText, talla === t && s.chipTextActive]}>
                 {t ?? 'Todas'}
               </Text>
             </TouchableOpacity>
@@ -108,29 +133,24 @@ const s = StyleSheet.create({
   input: {
     backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.primary,
     borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8,
-    color: Colors.primaryLight, fontFamily: 'monospace', fontSize: 12,
+    color: Colors.primaryLight, fontFamily: 'monospace', fontSize: 13,
   },
-  hint: { fontSize: 11, color: Colors.textSubtle, marginTop: 6 },
+  hint: { fontSize: 13, color: Colors.textSubtle, marginTop: 6 },
   syncRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  syncDate: { fontSize: 12, color: Colors.textSubtle, marginTop: 2 },
+  syncDate: { fontSize: 13, color: Colors.textSubtle, marginTop: 2 },
   syncButton: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: Colors.primary, borderRadius: 8,
     paddingHorizontal: 14, paddingVertical: 8,
   },
-  syncButtonText: { color: '#fff', fontSize: 12, fontWeight: '600' },
-  selectBox: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
-    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8,
+  syncButtonText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: {
+    paddingHorizontal: 14, paddingVertical: 7,
+    borderRadius: 20, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: Colors.bg,
   },
-  selectText: { fontSize: 12, color: Colors.text },
-  tallaRow: { flexDirection: 'row', gap: 8 },
-  tallaChip: {
-    paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: 6, borderWidth: 1, borderColor: Colors.border,
-  },
-  tallaChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  tallaText: { fontSize: 12, color: Colors.textMuted },
-  tallaTextActive: { color: '#fff', fontWeight: '600' },
+  chipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  chipText: { fontSize: 13, color: Colors.textMuted },
+  chipTextActive: { color: '#fff', fontWeight: '600' },
 });

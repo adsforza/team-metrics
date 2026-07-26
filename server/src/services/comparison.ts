@@ -33,20 +33,32 @@ function period(current: number, previous: number): ComparisonPeriod {
   };
 }
 
-function getThroughput(db: Database.Database, weekStart: string, weekEnd: string): number {
+function getThroughput(db: Database.Database, weekStart: string, weekEnd: string, assignee?: string | null): number {
   const doneIn = DONE_STATUSES.map(() => '?').join(',');
+  const assigneeClause = assignee
+    ? `AND issue_id IN (SELECT id FROM issues WHERE assignee_id = ?)`
+    : '';
   const row = db.prepare(`
     SELECT COUNT(DISTINCT issue_id) AS count
     FROM transitions
     WHERE to_status IN (${doneIn})
       AND transitioned_at >= ?
       AND transitioned_at < ?
-  `).get(...DONE_STATUSES, weekStart + 'T00:00:00Z', weekEnd + 'T00:00:00Z') as { count: number };
+      ${assigneeClause}
+  `).get(
+    ...DONE_STATUSES,
+    weekStart + 'T00:00:00Z',
+    weekEnd + 'T00:00:00Z',
+    ...(assignee ? [assignee] : [])
+  ) as { count: number };
   return row.count;
 }
 
-function getWipSnapshot(db: Database.Database, weekEnd: string): number {
+function getWipSnapshot(db: Database.Database, weekEnd: string, assignee?: string | null): number {
   const wipExIn = WIP_EXCLUDED.map(() => '?').join(',');
+  const assigneeClause = assignee
+    ? `AND issue_id IN (SELECT id FROM issues WHERE assignee_id = ?)`
+    : '';
   const row = db.prepare(`
     WITH last_before AS (
       SELECT issue_id, to_status,
@@ -58,29 +70,35 @@ function getWipSnapshot(db: Database.Database, weekEnd: string): number {
     FROM last_before
     WHERE rn = 1
       AND to_status NOT IN (${wipExIn})
-  `).get(weekEnd + 'T00:00:00Z', ...WIP_EXCLUDED) as { count: number };
+      ${assigneeClause}
+  `).get(
+    weekEnd + 'T00:00:00Z',
+    ...WIP_EXCLUDED,
+    ...(assignee ? [assignee] : [])
+  ) as { count: number };
   return row.count;
 }
 
 export function getComparison(
   db: Database.Database,
-  opts: { week?: string; now?: Date } = {}
+  opts: { week?: string; now?: Date; assignee?: string | null } = {}
 ): ComparisonResult {
   const now = opts.now ?? new Date();
   const week = opts.week ?? isoMonday(now);
   const prevWeek = addDays(week, -7);
   const nextWeek = addDays(week, 7);
+  const assignee = opts.assignee ?? null;
 
   return {
     week,
     prevWeek,
     throughput: period(
-      getThroughput(db, week, nextWeek),
-      getThroughput(db, prevWeek, week)
+      getThroughput(db, week, nextWeek, assignee),
+      getThroughput(db, prevWeek, week, assignee)
     ),
     wip: period(
-      getWipSnapshot(db, nextWeek),
-      getWipSnapshot(db, week)
+      getWipSnapshot(db, nextWeek, assignee),
+      getWipSnapshot(db, week, assignee)
     ),
   };
 }

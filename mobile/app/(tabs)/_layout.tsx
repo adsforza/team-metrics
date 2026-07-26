@@ -2,7 +2,7 @@ import { Tabs } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { ColorValue } from 'react-native';
 import { Colors } from '../../lib/theme';
-import { SyncHeader } from '../../components/SyncHeader';
+import { TabHeader } from '../../components/TabHeader';
 
 type FeatherName = React.ComponentProps<typeof Feather>['name'];
 
@@ -23,19 +23,15 @@ export default function TabLayout() {
           borderTopColor: Colors.border,
           borderTopWidth: 1,
         },
-        headerStyle: { backgroundColor: Colors.bg },
-        headerTintColor: Colors.text,
-        headerTitleStyle: { fontWeight: '600' },
-        tabBarLabelStyle: { fontSize: 10 },
-        headerRight: () => <SyncHeader />,
-        headerRightContainerStyle: { paddingRight: 16 },
+        tabBarLabelStyle: { fontSize: 12 },
+        header: (props) => <TabHeader {...props} />,
       }}
     >
-      <Tabs.Screen name="index"    options={{ title: 'Inicio',   tabBarIcon: tabIcon('home') }} />
-      <Tabs.Screen name="equipo"   options={{ title: 'Equipo',   tabBarIcon: tabIcon('users') }} />
-      <Tabs.Screen name="issues"   options={{ title: 'Issues',   tabBarIcon: tabIcon('file-text') }} />
-      <Tabs.Screen name="analisis" options={{ title: 'Análisis', tabBarIcon: tabIcon('bar-chart-2') }} />
-      <Tabs.Screen name="ajustes"  options={{ title: 'Ajustes',  tabBarIcon: tabIcon('settings') }} />
+      <Tabs.Screen name="index"    options={{ title: 'Inicio' ,   tabBarIcon: tabIcon('home') }} />
+      <Tabs.Screen name="equipo"   options={{ title: 'Equipo',    tabBarIcon: tabIcon('users') }} />
+      <Tabs.Screen name="issues"   options={{ title: 'Issues',    tabBarIcon: tabIcon('file-text') }} />
+      <Tabs.Screen name="analisis" options={{ title: 'Análisis',  tabBarIcon: tabIcon('bar-chart-2') }} />
+      <Tabs.Screen name="ajustes"  options={{ title: 'Ajustes',   tabBarIcon: tabIcon('settings') }} />
     </Tabs>
   );
 }

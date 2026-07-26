@@ -18,7 +18,7 @@ export function ForecastHistogram({ bins, marks, unit }: Props) {
           type="number"
           domain={['dataMin', 'dataMax']}
           tick={{ fontSize: 10, fill: '#64748b' }}
-          label={{ value: unit, fontSize: 9, fill: '#475569', position: 'insideBottomRight', offset: -2 }}
+          label={{ value: unit, fontSize: 9, fill: '#94a3b8', position: 'insideBottomRight', offset: -2 }}
         />
         <YAxis tick={{ fontSize: 10, fill: '#64748b' }} width={28} />
         <Bar dataKey="count" fill="#3b82f6" fillOpacity={0.55} isAnimationActive={false} />

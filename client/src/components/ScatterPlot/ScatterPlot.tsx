@@ -39,7 +39,7 @@ export function ScatterPlot({ issues, kpis }: Props) {
       <ResponsiveContainer width="100%" height={160}>
         <ScatterChart>
           <XAxis dataKey="x" hide />
-          <YAxis dataKey="y" tick={{ fontSize: 10, fill: '#475569' }} unit="d" domain={[0, kpis?.cycle_time_p85 ? kpis.cycle_time_p85 * 1.3 : 10]} />
+          <YAxis dataKey="y" tick={{ fontSize: 10, fill: '#94a3b8' }} unit="d" domain={[0, kpis?.cycle_time_p85 ? kpis.cycle_time_p85 * 1.3 : 10]} />
           <Tooltip
             contentStyle={{ background: '#1e2535', border: '1px solid #2d3748', borderRadius: 8, fontSize: 11 }}
             labelStyle={{ color: '#cbd5e1' }}

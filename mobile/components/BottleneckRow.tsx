@@ -35,10 +35,10 @@ const s = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   left: { flex: 1 },
-  status: { fontSize: 12, color: Colors.text, marginBottom: 2 },
-  meta: { fontSize: 10, color: Colors.textSubtle, marginBottom: 4 },
+  status: { fontSize: 14, color: Colors.text, marginBottom: 2 },
+  meta: { fontSize: 12, color: Colors.textSubtle, marginBottom: 4 },
   barBg: { height: 4, backgroundColor: Colors.border, borderRadius: 2, overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: 2 },
   badge: { borderWidth: 1, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 3 },
-  badgeText: { fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  badgeText: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
 });

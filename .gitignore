@@ -7,5 +7,11 @@ data/
 # Visual brainstorm companion
 .superpowers/
 
+# Claude worktrees
+.claude/worktrees/
+
+# Test coverage
+coverage/
+
 # macOS
 .DS_Store

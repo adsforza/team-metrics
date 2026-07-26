@@ -1,4 +1,4 @@
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList } from 'recharts';
 import type { ThroughputWeek } from '../../lib/api';
 import { formatDate, TALLA_COLOR } from '../../lib/formatters';
 import type { Talla } from '../../../../server/src/types';
@@ -25,8 +25,8 @@ export function ThroughputChart({ data }: Props) {
       <div className="flex-1 min-h-[120px]">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData}>
-            <XAxis dataKey="week" tickFormatter={w => formatDate(w)} tick={{ fontSize: 9, fill: '#475569' }} />
-            <YAxis tick={{ fontSize: 9, fill: '#475569' }} />
+            <XAxis dataKey="week" tickFormatter={w => formatDate(w)} tick={{ fontSize: 9, fill: '#94a3b8' }} />
+            <YAxis tick={{ fontSize: 9, fill: '#94a3b8' }} />
             <Tooltip
               contentStyle={{ background: '#1e2535', border: '1px solid #2d3748', borderRadius: 8, fontSize: 11 }}
               labelStyle={{ color: '#cbd5e1' }}
@@ -41,7 +41,11 @@ export function ThroughputChart({ data }: Props) {
                 fill={TALLA_COLOR[t]}
                 name={t}
                 radius={t === 'XL' ? [3, 3, 0, 0] : [0, 0, 0, 0]}
-              />
+              >
+                {t === 'XL' && (
+                  <LabelList dataKey="total" position="top" style={{ fontSize: 9, fill: '#94a3b8' }} />
+                )}
+              </Bar>
             ))}
           </BarChart>
         </ResponsiveContainer>

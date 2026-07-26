@@ -27,12 +27,21 @@ function Toggle({ mode, setMode }: { mode: ForecastMode; setMode: (m: ForecastMo
   return <div className="inline-flex gap-1 text-xs">{btn('when', '¿Cuándo?')}{btn('howMany', '¿Cuántos?')}</div>;
 }
 
-function ConfBlock({ label, value, sub }: { label: string; value: string; sub?: string }) {
+interface ConfBlockProps {
+  pct: string;
+  risk: string;
+  riskColor: string;
+  value: string;
+  sub?: string;
+  borderColor: string;
+}
+function ConfBlock({ pct, risk, riskColor, value, sub, borderColor }: ConfBlockProps) {
   return (
-    <div className="flex-1 text-center">
-      <div className="text-[10px] uppercase tracking-wide text-slate-500">{label}</div>
-      <div className="text-lg font-bold text-slate-100">{value}</div>
-      {sub && <div className="text-[11px] text-slate-500">{sub}</div>}
+    <div className={`flex-1 rounded-lg border ${borderColor} bg-slate-900/50 px-3 py-2 text-center`}>
+      <div className={`text-[10px] font-semibold uppercase tracking-wide ${riskColor}`}>{risk}</div>
+      <div className="text-base font-bold text-slate-100 my-0.5">{value}</div>
+      {sub && <div className="text-[10px] text-slate-500">{sub}</div>}
+      <div className="text-[9px] text-slate-600 mt-1">{pct} de probabilidad</div>
     </div>
   );
 }
@@ -45,20 +54,27 @@ export function ForecastCard(props: Props) {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Forecast · Monte Carlo</h3>
-          <InfoTooltip text="Simulación de 10.000 escenarios a partir del throughput diario de las últimas 12 semanas. ¿Cuándo?: días/fecha para completar N issues. ¿Cuántos?: issues completados en D días. Más confianza = fecha más tardía (¿cuándo?) o menos items (¿cuántos?)." />
+          <InfoTooltip text="Simula 10.000 escenarios basados en cuántos issues cerró el equipo por día en las últimas 12 semanas. ¿Cuándo? predice en qué fecha terminás N issues (por defecto, el WIP actual). ¿Cuántos? predice cuántos issues cerrás en D días." />
         </div>
         <Toggle mode={mode} setMode={setMode} />
       </div>
 
-      <div className="flex items-center gap-2 mb-4 text-xs text-slate-400">
+      <div className="flex items-center gap-3 mb-4 text-xs text-slate-400">
         {mode === 'when' ? (
-          <label className="flex items-center gap-2">Items a completar
-            <input type="number" min={1} max={1000} value={items ?? ''}
-              onChange={e => setItems(Math.max(1, Number(e.target.value) || 1))}
-              className="w-20 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200" />
-          </label>
+          <>
+            <label className="flex items-center gap-2">
+              Issues a completar
+              <input type="number" min={1} max={1000} value={items ?? forecast?.items ?? ''}
+                onChange={e => setItems(Math.max(1, Number(e.target.value) || 1))}
+                className="w-20 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200" />
+            </label>
+            {!items && forecast?.items && (
+              <span className="text-slate-600">← WIP actual ({forecast.items} issues en curso)</span>
+            )}
+          </>
         ) : (
-          <label className="flex items-center gap-2">Horizonte (días)
+          <label className="flex items-center gap-2">
+            ¿En cuántos días?
             <input type="number" min={1} max={365} value={horizon}
               onChange={e => setHorizon(Math.max(1, Number(e.target.value) || 1))}
               className="w-20 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200" />
@@ -75,11 +91,14 @@ export function ForecastCard(props: Props) {
       ) : mode === 'when' && forecast.when ? (
         <>
           <div className="flex gap-2 mb-3">
-            <ConfBlock label="50%" value={forecast.when.conf50.date} sub={`${forecast.when.conf50.days} días`} />
-            <ConfBlock label="85%" value={forecast.when.conf85.date} sub={`${forecast.when.conf85.days} días`} />
-            <ConfBlock label="95%" value={forecast.when.conf95.date} sub={`${forecast.when.conf95.days} días`} />
+            <ConfBlock pct="50%" risk="Optimista" riskColor="text-amber-400" borderColor="border-amber-900"
+              value={forecast.when.conf50.date} sub={`${forecast.when.conf50.days} días`} />
+            <ConfBlock pct="85%" risk="Recomendado" riskColor="text-blue-400" borderColor="border-blue-800"
+              value={forecast.when.conf85.date} sub={`${forecast.when.conf85.days} días`} />
+            <ConfBlock pct="95%" risk="Conservador" riskColor="text-green-400" borderColor="border-green-900"
+              value={forecast.when.conf95.date} sub={`${forecast.when.conf95.days} días`} />
           </div>
-          <p className="text-[11px] text-slate-600 mb-1">Más confianza = fecha más tardía (más segura).</p>
+          <p className="text-[11px] text-slate-600 mb-1">Usá "Recomendado" para compromisos de equipo y "Conservador" para stakeholders.</p>
           <ForecastHistogram bins={forecast.when.histogram}
             marks={[{ x: forecast.when.conf50.days, label: 'P50' }, { x: forecast.when.conf85.days, label: 'P85' }, { x: forecast.when.conf95.days, label: 'P95' }]}
             unit="días" />
@@ -87,11 +106,14 @@ export function ForecastCard(props: Props) {
       ) : mode === 'howMany' && forecast.howMany ? (
         <>
           <div className="flex gap-2 mb-3">
-            <ConfBlock label="50%" value={`≥ ${forecast.howMany.conf50}`} sub="issues" />
-            <ConfBlock label="85%" value={`≥ ${forecast.howMany.conf85}`} sub="issues" />
-            <ConfBlock label="95%" value={`≥ ${forecast.howMany.conf95}`} sub="issues" />
+            <ConfBlock pct="50%" risk="Optimista" riskColor="text-amber-400" borderColor="border-amber-900"
+              value={`≥ ${forecast.howMany.conf50}`} sub="issues" />
+            <ConfBlock pct="85%" risk="Recomendado" riskColor="text-blue-400" borderColor="border-blue-800"
+              value={`≥ ${forecast.howMany.conf85}`} sub="issues" />
+            <ConfBlock pct="95%" risk="Conservador" riskColor="text-green-400" borderColor="border-green-900"
+              value={`≥ ${forecast.howMany.conf95}`} sub="issues" />
           </div>
-          <p className="text-[11px] text-slate-600 mb-1">Más confianza = menos items (más seguro).</p>
+          <p className="text-[11px] text-slate-600 mb-1">Usá "Recomendado" para compromisos de equipo y "Conservador" para stakeholders.</p>
           <ForecastHistogram bins={forecast.howMany.histogram}
             marks={[{ x: forecast.howMany.conf50, label: 'P50' }, { x: forecast.howMany.conf85, label: 'P85' }, { x: forecast.howMany.conf95, label: 'P95' }]}
             unit="issues" />

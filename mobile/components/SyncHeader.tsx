@@ -32,11 +32,11 @@ export function SyncHeader() {
 
 const s = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  timestamp: { fontSize: 10, color: Colors.textSubtle },
+  timestamp: { fontSize: 12, color: Colors.textSubtle },
   button: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     borderWidth: 1, borderColor: Colors.primary,
     borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3,
   },
-  buttonText: { fontSize: 10, color: Colors.primary, fontWeight: '600' },
+  buttonText: { fontSize: 12, color: Colors.primary, fontWeight: '600' },
 });

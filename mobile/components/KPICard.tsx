@@ -4,19 +4,23 @@ import { Colors, Card } from '../lib/theme';
 interface Props {
   label: string;
   value: number | string | null;
+  sub?: string;
   color?: string;
 }
 
-export function KPICard({ label, value, color = Colors.text }: Props) {
+export function KPICard({ label, value, sub, color = Colors.text }: Props) {
   return (
-    <View style={Card.base}>
+    <View style={[Card.base, s.card]}>
       <Text style={s.label}>{label}</Text>
       <Text style={[s.value, { color }]}>{value ?? '—'}</Text>
+      {sub && <Text style={s.sub}>{sub}</Text>}
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  label: { fontSize: 9, color: Colors.textSubtle, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 },
-  value: { fontSize: 28, fontWeight: '700', lineHeight: 32 },
+  card: { flex: 1, minWidth: '45%' },
+  label: { fontSize: 13, fontWeight: '600', color: Colors.textMuted, marginBottom: 4 },
+  value: { fontSize: 24, fontWeight: '700', lineHeight: 28 },
+  sub: { fontSize: 15, color: Colors.textMuted, marginTop: 4 },
 });

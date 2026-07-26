@@ -80,4 +80,23 @@ describe('getComparison', () => {
     expect(r.week).toBe(PREV_WEEK);
     expect(r.throughput.current).toBe(1);
   });
+
+  it('opts.assignee restricts throughput and wip to that member', () => {
+    db.prepare(`INSERT INTO team_members VALUES (?,?,?,null)`).run('u1', 'Ana', 'u1@t.com');
+    db.prepare(`INSERT INTO team_members VALUES (?,?,?,null)`).run('u2', 'Beto', 'u2@t.com');
+    seedTransition('A', 'In Progress', 'Done', '2026-06-24T10:00:00Z'); // done this week
+    seedTransition('B', 'To Do', 'In Progress', '2026-06-23T10:00:00Z'); // active this week
+    seedTransition('C', 'In Progress', 'Done', '2026-06-24T10:00:00Z'); // done this week (other person)
+    seedTransition('D', 'To Do', 'In Progress', '2026-06-23T10:00:00Z'); // active this week (other person)
+    db.prepare(`UPDATE issues SET assignee_id = 'u1' WHERE id IN ('A','B')`).run();
+    db.prepare(`UPDATE issues SET assignee_id = 'u2' WHERE id IN ('C','D')`).run();
+
+    const all = getComparison(db, { now: NOW });
+    expect(all.throughput.current).toBe(2); // A + C
+    expect(all.wip.current).toBe(2);        // B + D
+
+    const u1 = getComparison(db, { now: NOW, assignee: 'u1' });
+    expect(u1.throughput.current).toBe(1);  // only A
+    expect(u1.wip.current).toBe(1);         // only B
+  });
 });

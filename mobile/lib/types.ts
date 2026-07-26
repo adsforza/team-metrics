@@ -75,6 +75,8 @@ export interface ScorecardDimensions {
   predictability: DimensionValue;
   focus: DimensionValue;
   flow: DimensionValue;
+  regressions: DimensionValue;
+  blocked: DimensionValue;
 }
 
 export interface PersonScorecard extends ScorecardDimensions {
@@ -89,6 +91,8 @@ export interface TeamScorecardResponse {
     predictability: DimensionContext;
     focus: DimensionContext;
     flow: DimensionContext;
+    regressions: DimensionContext;
+    blocked: DimensionContext;
   };
 }
 
@@ -188,6 +192,13 @@ export interface BottleneckResult {
   lookbackWeeks: number;
   total_active: number;
   states: BottleneckState[];
+}
+
+export interface TallaMetric {
+  talla: Talla;
+  ct_p50: number | null;
+  count: number;
+  team_ct_p50: number | null;
 }
 
 export interface ComparisonPeriod {

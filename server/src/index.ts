@@ -21,6 +21,10 @@ app.use('/api/metrics', metricsRouter);
 app.use('/api/team', teamRouter);
 app.use('/api/sync', syncRouter);
 
+app.get('/api/config', (_req, res) => {
+  res.json({ jiraBaseUrl: process.env.JIRA_BASE_URL ?? '' });
+});
+
 // Global error handler — catches any error propagated via next(err)
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('API error:', err.message);

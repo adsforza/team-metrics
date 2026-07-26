@@ -3,19 +3,18 @@ import { useFilters } from '../store/filters';
 import { api } from '../lib/api';
 import type { TeamScorecardResponse, TeamMember } from '../lib/api';
 
+const NULL_DIM = { value: null, previous: null, trend: 'flat' as const, improving: 'steady' as const };
+const NULL_CTX = { min: 0, median: 0, max: 0 };
+
 const EMPTY: TeamScorecardResponse = {
   team: {
-    delivery: { value: null, previous: null, trend: 'flat', improving: 'steady' },
-    predictability: { value: null, previous: null, trend: 'flat', improving: 'steady' },
-    focus: { value: null, previous: null, trend: 'flat', improving: 'steady' },
-    flow: { value: null, previous: null, trend: 'flat', improving: 'steady' },
+    delivery: NULL_DIM, predictability: NULL_DIM, focus: NULL_DIM,
+    flow: NULL_DIM, regressions: NULL_DIM, blocked: NULL_DIM,
   },
   members: [],
   context: {
-    delivery: { min: 0, median: 0, max: 0 },
-    predictability: { min: 0, median: 0, max: 0 },
-    focus: { min: 0, median: 0, max: 0 },
-    flow: { min: 0, median: 0, max: 0 },
+    delivery: NULL_CTX, predictability: NULL_CTX, focus: NULL_CTX,
+    flow: NULL_CTX, regressions: NULL_CTX, blocked: NULL_CTX,
   },
 };
 

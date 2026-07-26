@@ -143,6 +143,31 @@ function activeWipAt(db: Database.Database, day: string, f: QueryFilter = {}): n
   return row.c;
 }
 
+// ---- regression & blocked helpers -----------------------------------------
+
+// Flow rank derived from the canonical taxonomy in statusCategories.ts (single source of truth).
+// Order: todo → active → waiting/committed → done. `blocked` and `unknown` are absent on purpose,
+// so those transitions are ignored when scanning for backward moves.
+const CATEGORY_RANK: Record<string, number> = { todo: 1, active: 2, waiting: 3, done: 4, cancelled: 4 };
+function statusRank(status: string): number | undefined { return CATEGORY_RANK[categorize(status)]; }
+
+function hasRegression(trans: { to_status: string; transitioned_at: string }[]): boolean {
+  const ordered = trans
+    .map(t => ({ rank: statusRank(t.to_status), at: t.transitioned_at }))
+    .filter((t): t is { rank: number; at: string } => t.rank !== undefined)
+    .sort((a, b) => a.at.localeCompare(b.at));
+  for (let i = 1; i < ordered.length; i++) {
+    const prev = ordered[i - 1].rank;
+    const curr = ordered[i].rank;
+    if (curr < prev && prev >= 3) return true;
+  }
+  return false;
+}
+
+function wasBlocked(trans: { to_status: string }[]): boolean {
+  return trans.some(t => t.to_status === 'Blocked');
+}
+
 // ---- the four dimensions ---------------------------------------------------
 
 function delivery(db: Database.Database, w: Window, f: QueryFilter = {}): number {
@@ -179,6 +204,22 @@ function flow(db: Database.Database, w: Window, f: QueryFilter = {}): number | n
   return m === null ? null : m * 100;   // report as percentage
 }
 
+function regressions(db: Database.Database, w: Window, f: QueryFilter = {}): number | null {
+  const issues = completedIssues(db, w, f);
+  if (issues.length === 0) return null;
+  const trans = transitionsByIssue(db, issues.map(i => i.issue_id));
+  const count = issues.filter(i => hasRegression(trans.get(i.issue_id) ?? [])).length;
+  return (count / issues.length) * 100;
+}
+
+function blocked(db: Database.Database, w: Window, f: QueryFilter = {}): number | null {
+  const issues = completedIssues(db, w, f);
+  if (issues.length === 0) return null;
+  const trans = transitionsByIssue(db, issues.map(i => i.issue_id));
+  const count = issues.filter(i => wasBlocked(trans.get(i.issue_id) ?? [])).length;
+  return (count / issues.length) * 100;
+}
+
 // ---- trend / context assembly ----------------------------------------------
 
 export function makeDimension(current: number | null, previous: number | null, lowerIsBetter: boolean): DimensionValue {
@@ -211,6 +252,8 @@ function dimensionsFor(db: Database.Database, cur: Window, prev: Window, f: Quer
     predictability: makeDimension(predictability(db, cur, f), predictability(db, prev, f), true),
     focus: makeDimension(focus(db, cur, f), focus(db, prev, f), true),
     flow: makeDimension(flow(db, cur, f), flow(db, prev, f), false),
+    regressions: makeDimension(regressions(db, cur, f), regressions(db, prev, f), true),
+    blocked: makeDimension(blocked(db, cur, f), blocked(db, prev, f), true),
   };
 }
 
@@ -240,6 +283,8 @@ export function getTeamScorecard(db: Database.Database, params: FilterParams): T
     predictability: contextOf(memberCards.map(c => c.predictability.value)),
     focus: contextOf(memberCards.map(c => c.focus.value)),
     flow: contextOf(memberCards.map(c => c.flow.value)),
+    regressions: contextOf(memberCards.map(c => c.regressions.value)),
+    blocked: contextOf(memberCards.map(c => c.blocked.value)),
   };
 
   return { team, members: memberCards, context };

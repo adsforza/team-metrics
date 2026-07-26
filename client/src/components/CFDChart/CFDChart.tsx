@@ -43,8 +43,8 @@ export function CFDChart({ data }: Props) {
       <p className="text-xs text-slate-600 mb-4">Acumulado por columna</p>
       <ResponsiveContainer width="100%" height={180}>
         <AreaChart data={sampled}>
-          <XAxis dataKey="date" tickFormatter={formatDate} tick={{ fontSize: 10, fill: '#475569' }} />
-          <YAxis tick={{ fontSize: 10, fill: '#475569' }} />
+          <XAxis dataKey="date" tickFormatter={formatDate} tick={{ fontSize: 10, fill: '#94a3b8' }} />
+          <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} />
           <Tooltip
             contentStyle={{ background: '#1e2535', border: '1px solid #2d3748', borderRadius: 8, fontSize: 11 }}
             labelFormatter={formatDate}

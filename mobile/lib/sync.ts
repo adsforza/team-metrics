@@ -1,13 +1,27 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getBaseUrl } from './api';
+import { getBaseUrl, JIRA_BASE_URL_KEY } from './api';
 import { getDb } from './db';
 import type {
   KPIMetrics, ThroughputWeek, TeamScorecardResponse, AgingIssue,
   WipRiskResult, BottleneckResult, ForecastResult, ComparisonResult,
-  CFDPoint, Issue,
+  CFDPoint, Issue, TallaMetric,
 } from './types';
 
 export const LAST_SYNCED_KEY = 'last_synced_at';
+
+function getLastNMondays(n: number): string[] {
+  const mondays: string[] = [];
+  const today = new Date();
+  const diff = (today.getDay() + 6) % 7;
+  const thisMonday = new Date(today);
+  thisMonday.setDate(today.getDate() - diff);
+  for (let i = 0; i < n; i++) {
+    const mon = new Date(thisMonday);
+    mon.setDate(thisMonday.getDate() - i * 7);
+    mondays.push(mon.toISOString().slice(0, 10));
+  }
+  return mondays;
+}
 
 export interface SyncError { endpoint: string; message: string }
 export interface SyncResult { success: boolean; errors: SyncError[]; syncedAt: string }
@@ -18,25 +32,37 @@ async function fetchJson<T>(url: string): Promise<T> {
   return res.json();
 }
 
-export async function performSync(): Promise<SyncResult> {
+export async function performSync(dateParams?: { from: string; to: string }, assignee?: string | null): Promise<SyncResult> {
   const baseUrl = await getBaseUrl();
   const db = await getDb();
   const errors: SyncError[] = [];
   const syncedAt = new Date().toISOString();
 
-  const [kpi, throughput, team, aging, wipRisk, bottleneck, forecast, comparison, cfd, issues] =
+  const parts: string[] = [];
+  if (dateParams) { parts.push(`from=${dateParams.from}`, `to=${dateParams.to}`); }
+  if (assignee) parts.push(`assignee=${encodeURIComponent(assignee)}`);
+  const qs = parts.length ? '?' + parts.join('&') : '';
+
+  const mondays = getLastNMondays(6);
+  const [kpi, throughput, team, aging, wipRisk, bottleneck, forecast, cfd, issues, byTalla] =
     await Promise.allSettled([
-      fetchJson<KPIMetrics>(`${baseUrl}/api/metrics`),
-      fetchJson<ThroughputWeek[]>(`${baseUrl}/api/metrics/throughput`),
-      fetchJson<TeamScorecardResponse>(`${baseUrl}/api/team`),
-      fetchJson<AgingIssue[]>(`${baseUrl}/api/metrics/aging`),
-      fetchJson<WipRiskResult>(`${baseUrl}/api/metrics/wip-risk`),
-      fetchJson<BottleneckResult>(`${baseUrl}/api/metrics/bottleneck`),
-      fetchJson<ForecastResult>(`${baseUrl}/api/metrics/forecast`),
-      fetchJson<ComparisonResult>(`${baseUrl}/api/metrics/comparison`),
-      fetchJson<CFDPoint[]>(`${baseUrl}/api/metrics/cfd`),
-      fetchJson<Issue[]>(`${baseUrl}/api/issues`),
+      fetchJson<KPIMetrics>(`${baseUrl}/api/metrics${qs}`),
+      fetchJson<ThroughputWeek[]>(`${baseUrl}/api/metrics/throughput${qs}`),
+      fetchJson<TeamScorecardResponse>(`${baseUrl}/api/team${qs}`),
+      fetchJson<AgingIssue[]>(`${baseUrl}/api/metrics/aging${qs}`),
+      fetchJson<WipRiskResult>(`${baseUrl}/api/metrics/wip-risk${qs}`),
+      fetchJson<BottleneckResult>(`${baseUrl}/api/metrics/bottleneck${qs}`),
+      fetchJson<ForecastResult>(`${baseUrl}/api/metrics/forecast${qs}`),
+      fetchJson<CFDPoint[]>(`${baseUrl}/api/metrics/cfd${qs}`),
+      fetchJson<Issue[]>(`${baseUrl}/api/issues${qs}`),
+      fetchJson<TallaMetric[]>(`${baseUrl}/api/metrics/by-talla${qs}`),
     ]);
+  const comparisons = await Promise.allSettled(
+    mondays.map(w => {
+      const cqs = [...parts, `week=${w}`].join('&');
+      return fetchJson<ComparisonResult>(`${baseUrl}/api/metrics/comparison?${cqs}`);
+    })
+  );
 
   await db.withTransactionAsync(async () => {
     if (kpi.status === 'fulfilled') {
@@ -70,6 +96,10 @@ export async function performSync(): Promise<SyncResult> {
           [m.member.id, JSON.stringify(m), syncedAt]
         );
       }
+      await db.runAsync(
+        'INSERT OR REPLACE INTO scorecard_context_snapshot (id, context_json, synced_at) VALUES (1,?,?)',
+        [JSON.stringify(t.context), syncedAt]
+      );
     } else { errors.push({ endpoint: '/api/team', message: String(team.reason) }); }
 
     if (aging.status === 'fulfilled') {
@@ -95,13 +125,15 @@ export async function performSync(): Promise<SyncResult> {
       } else { errors.push({ endpoint, message: String(result.reason) }); }
     }
 
-    if (comparison.status === 'fulfilled') {
-      const c = comparison.value;
-      await db.runAsync(
-        'INSERT OR REPLACE INTO comparison_snapshot (week, result_json, synced_at) VALUES (?,?,?)',
-        [c.week, JSON.stringify(c), syncedAt]
-      );
-    } else { errors.push({ endpoint: '/api/metrics/comparison', message: String(comparison.reason) }); }
+    for (let i = 0; i < comparisons.length; i++) {
+      const c = comparisons[i];
+      if (c.status === 'fulfilled') {
+        await db.runAsync(
+          'INSERT OR REPLACE INTO comparison_snapshot (week, result_json, synced_at) VALUES (?,?,?)',
+          [c.value.week, JSON.stringify(c.value), syncedAt]
+        );
+      } else { errors.push({ endpoint: `/api/metrics/comparison?week=${mondays[i]}`, message: String(c.reason) }); }
+    }
 
     if (cfd.status === 'fulfilled') {
       await db.runAsync('DELETE FROM cfd_points');
@@ -122,9 +154,23 @@ export async function performSync(): Promise<SyncResult> {
         );
       }
     } else { errors.push({ endpoint: '/api/issues', message: String(issues.reason) }); }
+
+    if (byTalla.status === 'fulfilled') {
+      await db.runAsync(
+        'INSERT OR REPLACE INTO by_talla_snapshot (id, result_json, synced_at) VALUES (1,?,?)',
+        [JSON.stringify(byTalla.value), syncedAt]
+      );
+    } else { errors.push({ endpoint: '/api/metrics/by-talla', message: String(byTalla.reason) }); }
   });
 
   await AsyncStorage.setItem(LAST_SYNCED_KEY, syncedAt);
+
+  try {
+    const cfg = await fetchJson<{ jiraBaseUrl: string }>(`${baseUrl}/api/config`);
+    if (cfg.jiraBaseUrl) {
+      await AsyncStorage.setItem(JIRA_BASE_URL_KEY, cfg.jiraBaseUrl.replace(/\/+$/, ''));
+    }
+  } catch { /* non-fatal */ }
 
   return { success: errors.length === 0, errors, syncedAt };
 }

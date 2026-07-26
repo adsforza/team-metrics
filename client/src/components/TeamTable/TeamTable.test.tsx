@@ -6,17 +6,22 @@ import type { TeamScorecardResponse } from '../../lib/api';
 
 const dim = (value: number | null) => ({ value, previous: null, trend: 'flat' as const, improving: 'steady' as const });
 
+const d0 = dim(0);
+const ctx0 = { min: 0, median: 0, max: 0 };
+
 const scorecard: TeamScorecardResponse = {
-  team: { delivery: dim(11), predictability: dim(1.9), focus: dim(2.8), flow: dim(57) },
+  team: { delivery: dim(11), predictability: dim(1.9), focus: dim(2.8), flow: dim(57), regressions: d0, blocked: d0 },
   members: [
     { member: { id: 'u1', display_name: 'Ana Gómez', email: 'a@t.com', avatar_url: null },
-      delivery: dim(14), predictability: dim(1.4), focus: dim(2.1), flow: dim(68) },
+      delivery: dim(14), predictability: dim(1.4), focus: dim(2.1), flow: dim(68), regressions: d0, blocked: d0 },
   ],
   context: {
     delivery: { min: 0, median: 11, max: 14 },
     predictability: { min: 1.4, median: 1.9, max: 2.8 },
     focus: { min: 2.1, median: 2.8, max: 4.3 },
     flow: { min: 41, median: 57, max: 68 },
+    regressions: ctx0,
+    blocked: ctx0,
   },
 };
 
@@ -36,7 +41,7 @@ describe('TeamTable', () => {
   it('defaults to alphabetical order and sorts by a column when its header is clicked', () => {
     const m = (id: string, name: string, delivery: number) => ({
       member: { id, display_name: name, email: `${id}@t.com`, avatar_url: null },
-      delivery: dim(delivery), predictability: dim(2), focus: dim(2), flow: dim(90),
+      delivery: dim(delivery), predictability: dim(2), focus: dim(2), flow: dim(90), regressions: d0, blocked: d0,
     });
     const sc: TeamScorecardResponse = {
       ...scorecard,

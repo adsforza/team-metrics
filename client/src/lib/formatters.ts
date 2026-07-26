@@ -2,7 +2,7 @@ import type { Talla } from '../../../server/src/types';
 
 export function formatDays(days: number | null): string {
   if (days === null) return '—';
-  return days < 1 ? `${Math.round(days * 24)}h` : `${days.toFixed(1)}d`;
+  return days < 1 ? `${Math.round(days * 24)}h` : `${days.toFixed(2)}d`;
 }
 
 export function formatDate(iso: string): string {

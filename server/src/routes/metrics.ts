@@ -76,7 +76,8 @@ router.get('/bottleneck', (_req, res, next) => {
 router.get('/comparison', (req, res, next) => {
   try {
     const week = typeof req.query.week === 'string' ? req.query.week : undefined;
-    res.json(getComparison(getDb(), { week }));
+    const assignee = typeof req.query.assignee === 'string' ? req.query.assignee : undefined;
+    res.json(getComparison(getDb(), { week, assignee }));
   } catch (err) { next(err); }
 });
 

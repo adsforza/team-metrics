@@ -16,10 +16,10 @@ export const Colors = {
 } as const;
 
 export const Typography = StyleSheet.create({
-  label: { fontSize: 9, color: Colors.textSubtle, textTransform: 'uppercase', letterSpacing: 0.8 },
-  body: { fontSize: 13, color: Colors.text },
-  bodyMuted: { fontSize: 13, color: Colors.textMuted },
-  heading: { fontSize: 16, fontWeight: '700', color: Colors.text },
+  label: { fontSize: 12, color: Colors.textSubtle, textTransform: 'uppercase', letterSpacing: 0.8 },
+  body: { fontSize: 14, color: Colors.text },
+  bodyMuted: { fontSize: 14, color: Colors.textMuted },
+  heading: { fontSize: 17, fontWeight: '700', color: Colors.text },
   number: { fontSize: 28, fontWeight: '700', color: Colors.text, lineHeight: 32 },
   numberSmall: { fontSize: 20, fontWeight: '700', color: Colors.textMuted },
 });
