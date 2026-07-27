@@ -2,21 +2,16 @@ import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'rea
 import { Feather } from '@expo/vector-icons';
 import { Colors } from '../lib/theme';
 import { useSyncStore } from '../store/syncStore';
-
-function timeAgo(isoString: string): string {
-  const diff = Math.floor((Date.now() - new Date(isoString).getTime()) / 1000);
-  if (diff < 60) return 'recién';
-  if (diff < 3600) return `hace ${Math.floor(diff / 60)}m`;
-  if (diff < 86400) return `hace ${Math.floor(diff / 3600)}h`;
-  return `hace ${Math.floor(diff / 86400)}d`;
-}
+import { syncStatusText } from '../lib/syncStatus';
 
 export function SyncHeader() {
-  const { sync, loading, lastSyncedAt } = useSyncStore();
+  const { sync, loading, lastSyncedAt, lastSyncStatus } = useSyncStore();
+  const label = syncStatusText(lastSyncStatus, lastSyncedAt);
+  const offline = lastSyncStatus === 'offline';
   return (
     <View style={s.row}>
-      {lastSyncedAt && (
-        <Text style={s.timestamp}>sync {timeAgo(lastSyncedAt)}</Text>
+      {label !== '' && (
+        <Text style={[s.timestamp, offline && s.offline]}>{label}</Text>
       )}
       <TouchableOpacity style={s.button} onPress={sync} disabled={loading}>
         {loading ? (
@@ -33,6 +28,7 @@ export function SyncHeader() {
 const s = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   timestamp: { fontSize: 12, color: Colors.textSubtle },
+  offline: { color: Colors.warning },
   button: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     borderWidth: 1, borderColor: Colors.primary,
