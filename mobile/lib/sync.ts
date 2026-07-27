@@ -24,7 +24,7 @@ function getLastNMondays(n: number): string[] {
 }
 
 export interface SyncError { endpoint: string; message: string }
-export interface SyncResult { success: boolean; errors: SyncError[]; syncedAt: string }
+export interface SyncResult { success: boolean; errors: SyncError[]; syncedAt: string; okCount: number; failCount: number }
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
@@ -163,7 +163,16 @@ export async function performSync(dateParams?: { from: string; to: string }, ass
     } else { errors.push({ endpoint: '/api/metrics/by-talla', message: String(byTalla.reason) }); }
   });
 
-  await AsyncStorage.setItem(LAST_SYNCED_KEY, syncedAt);
+  const allResults = [
+    kpi, throughput, team, aging, wipRisk, bottleneck, forecast, cfd, issues, byTalla,
+    ...comparisons,
+  ];
+  const okCount = allResults.filter(r => r.status === 'fulfilled').length;
+  const failCount = allResults.length - okCount;
+
+  if (okCount > 0) {
+    await AsyncStorage.setItem(LAST_SYNCED_KEY, syncedAt);
+  }
 
   try {
     const cfg = await fetchJson<{ jiraBaseUrl: string }>(`${baseUrl}/api/config`);
@@ -172,5 +181,5 @@ export async function performSync(dateParams?: { from: string; to: string }, ass
     }
   } catch { /* non-fatal */ }
 
-  return { success: errors.length === 0, errors, syncedAt };
+  return { success: errors.length === 0, errors, syncedAt, okCount, failCount };
 }

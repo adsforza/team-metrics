@@ -16,7 +16,8 @@ jest.mock('expo-sqlite', () => {
 
 global.fetch = jest.fn();
 
-import { performSync } from '../lib/sync';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { performSync, LAST_SYNCED_KEY } from '../lib/sync';
 
 const mockKpi = { wip: 5, throughput: 3, cycle_time_p50: 4, cycle_time_p85: 7, blocked_count: 1 };
 
@@ -54,5 +55,21 @@ describe('performSync', () => {
     const result = await performSync();
     expect(result.errors.length).toBeGreaterThan(0);
     expect(result.success).toBe(false);
+  });
+
+  test('reporta okCount/failCount y NO escribe LAST_SYNCED_KEY si todo falla', async () => {
+    (global.fetch as jest.Mock).mockRejectedValue(new Error('offline'));
+    const result = await performSync();
+    expect(result.okCount).toBe(0);
+    expect(result.failCount).toBeGreaterThan(0);
+    expect(result.success).toBe(false);
+    expect(AsyncStorage.setItem).not.toHaveBeenCalledWith(LAST_SYNCED_KEY, expect.anything());
+  });
+
+  test('escribe LAST_SYNCED_KEY cuando al menos un endpoint responde', async () => {
+    mockAllFetch();
+    const result = await performSync();
+    expect(result.okCount).toBeGreaterThan(0);
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith(LAST_SYNCED_KEY, result.syncedAt);
   });
 });
