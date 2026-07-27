@@ -3,8 +3,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LAST_SYNCED_KEY, performSync, SyncError } from '../lib/sync';
 import { isServerReachable } from '../lib/api';
 import { dateRangeFor, useFilterStore } from './filterStore';
+import type { SyncStatus } from '../lib/syncStatus';
 
-export type SyncStatus = 'ok' | 'partial' | 'offline' | null;
+export type { SyncStatus };
 
 interface SyncState {
   loading: boolean;
