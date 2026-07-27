@@ -20,3 +20,13 @@ export async function apiFetch<T>(path: string): Promise<T> {
   if (!res.ok) throw new Error(`HTTP ${res.status} ${path}`);
   return res.json() as Promise<T>;
 }
+
+export async function isServerReachable(): Promise<boolean> {
+  const base = await getBaseUrl();
+  try {
+    const res = await fetch(`${base}/api/config`, { signal: AbortSignal.timeout(3000) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
