@@ -11,7 +11,10 @@ export default function RootLayout() {
 
   useEffect(() => {
     getDb().catch(console.error);
-    loadLastSynced();
+    loadLastSynced().then(() => {
+      // best-effort: en casa (server up) refresca; offline el pre-check corta y marca offline.
+      useSyncStore.getState().sync();
+    });
   }, []);
 
   return (
