@@ -7,21 +7,9 @@ import type {
   CFDPoint, Issue, TallaMetric,
 } from './types';
 
-export const LAST_SYNCED_KEY = 'last_synced_at';
+import { getLastNMondays } from './weeks';
 
-function getLastNMondays(n: number): string[] {
-  const mondays: string[] = [];
-  const today = new Date();
-  const diff = (today.getDay() + 6) % 7;
-  const thisMonday = new Date(today);
-  thisMonday.setDate(today.getDate() - diff);
-  for (let i = 0; i < n; i++) {
-    const mon = new Date(thisMonday);
-    mon.setDate(thisMonday.getDate() - i * 7);
-    mondays.push(mon.toISOString().slice(0, 10));
-  }
-  return mondays;
-}
+export const LAST_SYNCED_KEY = 'last_synced_at';
 
 export interface SyncError { endpoint: string; message: string }
 export interface SyncResult { success: boolean; errors: SyncError[]; syncedAt: string; okCount: number; failCount: number }
@@ -125,6 +113,12 @@ export async function performSync(dateParams?: { from: string; to: string }, ass
       } else { errors.push({ endpoint, message: String(result.reason) }); }
     }
 
+    // Prune weeks outside the current window so stale/misaligned keys (e.g. a
+    // non-Monday date from an old timezone bug) don't linger in the selector.
+    await db.runAsync(
+      `DELETE FROM comparison_snapshot WHERE week NOT IN (${mondays.map(() => '?').join(',')})`,
+      mondays
+    );
     for (let i = 0; i < comparisons.length; i++) {
       const c = comparisons[i];
       if (c.status === 'fulfilled') {
