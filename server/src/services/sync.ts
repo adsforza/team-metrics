@@ -2,7 +2,6 @@ import cron from 'node-cron';
 import Database from 'better-sqlite3';
 import { getDb } from '../db/index';
 import { createJiraClients } from './jira';
-import { classifyTalla } from './claude';
 
 export interface SyncResult {
   synced_count: number;
@@ -28,40 +27,17 @@ export async function runSync(db: Database.Database): Promise<SyncResult> {
     }));
     const issues = issueArrays.flat();
 
-    // Phase 1: Async classification with error isolation per issue
-    interface ClassifiedIssue {
-      issue: typeof issues[0];
-      talla: string | null;
-      talla_confidence: number | null;
-    }
-
-    const classified: ClassifiedIssue[] = [];
-    for (const issue of issues) {
-      const existing = db.prepare(`SELECT talla, talla_confidence, description FROM issues WHERE id = ?`).get(issue.id) as any;
-      const needsClassification = !existing || existing.description !== issue.description;
-      let talla = existing?.talla ?? null;
-      let talla_confidence = existing?.talla_confidence ?? null;
-
-      if (needsClassification) {
-        try {
-          await new Promise(r => setTimeout(r, 8000)); // ~7 RPM (2500 TPM / ~300 tokens por request)
-          const result = await classifyTalla(issue.title, issue.description);
-          talla = result.talla;
-          talla_confidence = result.confidence;
-          classified_count++;
-        } catch (err: any) {
-          console.error(`Failed to classify issue ${issue.id}:`, err.message);
-          // Continue with talla=null, issue will still be synced
-        }
-      }
-
-      classified.push({ issue, talla, talla_confidence });
-    }
-
-    // Phase 2: All upserts in a single transaction
+    // Download only: persist issues + transitions. Classification is decoupled
+    // (run separately via POST /api/sync/reclassify) so a sync always refreshes
+    // flow data even when Gemini is rate-limited. New issues stay talla=null and
+    // get picked up by reclassify; already-classified tallas are preserved.
     const upsertBatch = db.transaction(() => {
       const now = new Date().toISOString();
-      for (const { issue, talla, talla_confidence } of classified) {
+      for (const issue of issues) {
+        const existing = db.prepare(`SELECT talla, talla_confidence FROM issues WHERE id = ?`).get(issue.id) as any;
+        const talla = existing?.talla ?? null;
+        const talla_confidence = existing?.talla_confidence ?? null;
+
         // Upsert team member
         if (issue.assignee) {
           db.prepare(`
