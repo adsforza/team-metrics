@@ -1,4 +1,10 @@
-export type Talla = 'S' | 'M' | 'L' | 'XL';
+export type {
+  Talla, FilterParams, KPIMetrics, Trend, Improving, DimensionValue, DimensionContext,
+  ScorecardDimensions, PersonScorecard, TeamScorecardResponse,
+} from '../../shared/core/types';
+
+import type { Talla } from '../../shared/core/types';
+
 export type Score = 'A' | 'B' | 'C' | 'D';
 
 export interface Issue {
@@ -40,22 +46,6 @@ export interface SyncLog {
   error: string | null;
 }
 
-export interface FilterParams {
-  from?: string;
-  to?: string;
-  assignee?: string;
-  talla?: string;
-  status?: string;
-}
-
-export interface KPIMetrics {
-  wip: number;
-  throughput: number;
-  cycle_time_p50: number | null;
-  cycle_time_p85: number | null;
-  blocked_count: number;
-}
-
 export interface TallaMetric {
   talla: Talla;
   ct_p50: number | null;
@@ -85,48 +75,6 @@ export interface AgingIssue {
   status: string;
   days_in_status: number;
   assignee_id: string | null;
-}
-
-export type Trend = 'up' | 'down' | 'flat';
-export type Improving = 'better' | 'worse' | 'steady';
-
-export interface DimensionValue {
-  value: number | null;      // null = insufficient data
-  previous: number | null;   // value over the immediately preceding window
-  trend: Trend;              // raw direction of change
-  improving: Improving;      // polarity-aware reading → drives color
-}
-
-export interface DimensionContext {
-  min: number;
-  median: number;
-  max: number;
-}
-
-export interface ScorecardDimensions {
-  delivery: DimensionValue;
-  predictability: DimensionValue;
-  focus: DimensionValue;
-  flow: DimensionValue;
-  regressions: DimensionValue;
-  blocked: DimensionValue;
-}
-
-export interface PersonScorecard extends ScorecardDimensions {
-  member: TeamMember;
-}
-
-export interface TeamScorecardResponse {
-  team: ScorecardDimensions;
-  members: PersonScorecard[];
-  context: {
-    delivery: DimensionContext;
-    predictability: DimensionContext;
-    focus: DimensionContext;
-    flow: DimensionContext;
-    regressions: DimensionContext;
-    blocked: DimensionContext;
-  };
 }
 
 export interface ForecastConfidenceDate { days: number; date: string }
