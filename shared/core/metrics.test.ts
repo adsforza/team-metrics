@@ -2,8 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { computeKpis } from './metrics';
 import type { CoreIssue, CoreTransition } from './types';
 
-const iso = (d: string) => d; // timestamps are plain ISO strings
-
 function issue(id: string, over: Partial<CoreIssue> = {}): CoreIssue {
   return { id, status: 'In Progress', assignee_id: 'u1', talla: 'M',
     created_at: '2026-06-01T00:00:00Z', last_transition_at: '2026-06-10T00:00:00Z', ...over };
@@ -35,5 +33,29 @@ describe('computeKpis', () => {
     const issues: CoreIssue[] = [ issue('A', { talla: 'S', status: 'In Progress' }) ];
     const k = computeKpis(issues, [], { talla: 'XL' }, 7, new Date('2026-06-20T00:00:00Z'));
     expect(k.wip).toBe(1); // talla filter must NOT drop it from wip
+  });
+
+  it('throughput counts Done-transition occurrences, not distinct issues', () => {
+    // An issue re-opened and re-done within the window must count twice, matching
+    // the reference SQL's COUNT(*) over the join with no DISTINCT.
+    const issues: CoreIssue[] = [ issue('A', { status: 'Done' }) ];
+    const transitions: CoreTransition[] = [
+      { issue_id: 'A', from_status: 'To Do', to_status: 'Done', transitioned_at: '2026-06-05T00:00:00Z' },
+      { issue_id: 'A', from_status: 'Done', to_status: 'In Progress', transitioned_at: '2026-06-06T00:00:00Z' },
+      { issue_id: 'A', from_status: 'In Progress', to_status: 'Done', transitioned_at: '2026-06-10T00:00:00Z' },
+    ];
+    const params = { from: '2026-06-01', to: '2026-06-30' };
+    const k = computeKpis(issues, transitions, params, 7, new Date('2026-06-20T00:00:00Z'));
+    expect(k.throughput).toBe(2);
+  });
+
+  it('blocked_count excludes issues with a null last_transition_at', () => {
+    // The reference SQL `i.last_transition_at <= ?` evaluates to NULL (excluded) when
+    // the column is null; treating null as '' would wrongly count it as blocked.
+    const issues: CoreIssue[] = [
+      issue('A', { status: 'In Progress', last_transition_at: null }),
+    ];
+    const k = computeKpis(issues, [], {}, 7, new Date('2026-06-20T00:00:00Z'));
+    expect(k.blocked_count).toBe(0);
   });
 });

@@ -48,12 +48,15 @@ export function computeKpis(
 
   const wip = issues.filter(i => byAssignee(i) && !WIP_EXCLUDED.includes(i.status)).length;
 
-  const doneByIssue = byId(transitions.filter(t => DONE.includes(t.to_status) && t.transitioned_at >= from && t.transitioned_at <= to));
-  const throughput = issues.filter(i => byAssignee(i) && doneByIssue.has(i.id)).length;
+  const assigneeById = new Map(issues.map(i => [i.id, i.assignee_id]));
+  const throughput = transitions.filter(t =>
+    DONE.includes(t.to_status) && t.transitioned_at >= from && t.transitioned_at <= to &&
+    (!params.assignee || assigneeById.get(t.issue_id) === params.assignee)
+  ).length;
 
   const cutoff = new Date(now.getTime() - Math.max(1, agingThresholdDays) * MS_DAY).toISOString();
   const blocked_count = issues.filter(i =>
-    byAssignee(i) && !WIP_EXCLUDED.includes(i.status) && (i.last_transition_at ?? '') <= cutoff
+    byAssignee(i) && !WIP_EXCLUDED.includes(i.status) && i.last_transition_at != null && i.last_transition_at <= cutoff
   ).length;
 
   const cts = computeCycleTimes(issues, transitions, params);
