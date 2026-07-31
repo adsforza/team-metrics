@@ -1,0 +1,9 @@
+{
+  "name": "@teammetrics/core",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "index.ts",
+  "scripts": { "test": "vitest run" },
+  "devDependencies": { "vitest": "^1.6.1", "typescript": "^5.4.0" }
+}
