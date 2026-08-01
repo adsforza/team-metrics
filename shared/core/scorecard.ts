@@ -283,7 +283,8 @@ export function computeScorecard(
 ): TeamScorecardResponse {
   const { cur, prev } = resolveWindows(params, now);
   const tallas = params.talla ? params.talla.split(',').map(t => t.trim()).filter(Boolean) : undefined;
-  const sortedMembers = [...members].sort((a, b) => a.display_name.localeCompare(b.display_name));
+  const sortedMembers = [...members].sort((a, b) =>
+    a.display_name < b.display_name ? -1 : a.display_name > b.display_name ? 1 : 0);
 
   const memberCards: PersonScorecard[] = sortedMembers
     .map(m => ({ member: m, ...dimensionsFor(issues, transitions, cur, prev, { assignee: m.id, tallas }) }))
