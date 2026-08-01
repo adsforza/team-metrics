@@ -1,7 +1,7 @@
 // server/src/services/scorecard.ts
 import Database from 'better-sqlite3';
-import { percentile, median } from './stats';
-import { categorize, ACTIVE_STATUSES, DONE_STATUSES } from './statusCategories';
+import { percentile, median } from '../../../shared/core/stats';
+import { categorize, ACTIVE_STATUSES, DONE_STATUSES } from '../../../shared/core/statusCategories';
 import type {
   Talla, FilterParams, DimensionValue, DimensionContext,
   ScorecardDimensions, PersonScorecard, TeamScorecardResponse, Trend, Improving,

@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { STATUS_CATEGORIES } from './statusCategories';
+import { STATUS_CATEGORIES } from '../../../shared/core/statusCategories';
 import type { ComparisonResult, ComparisonPeriod } from '../types';
 
 const DONE_STATUSES = [...STATUS_CATEGORIES.done] as string[];

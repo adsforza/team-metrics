@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
-import { percentile } from './stats';
-import { DONE_STATUSES, STATUS_CATEGORIES } from './statusCategories';
+import { percentile } from '../../../shared/core/stats';
+import { DONE_STATUSES, STATUS_CATEGORIES } from '../../../shared/core/statusCategories';
 import type {
   ForecastBin, ForecastWhen, ForecastHowMany, ForecastResult, ForecastConfidenceDate,
 } from '../types';

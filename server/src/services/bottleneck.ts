@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
-import { percentile } from './stats';
-import { STATUS_CATEGORIES } from './statusCategories';
+import { percentile } from '../../../shared/core/stats';
+import { STATUS_CATEGORIES } from '../../../shared/core/statusCategories';
 import type {
   Talla,
   BottleneckResult,

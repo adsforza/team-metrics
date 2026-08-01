@@ -1,8 +1,8 @@
 // server/src/services/wipRisk.ts
 import Database from 'better-sqlite3';
-import { percentile } from './stats';
+import { percentile } from '../../../shared/core/stats';
 import { getCycleTimes } from './metrics';
-import { ACTIVE_STATUSES, STATUS_CATEGORIES } from './statusCategories';
+import { ACTIVE_STATUSES, STATUS_CATEGORIES } from '../../../shared/core/statusCategories';
 import type { Talla, TallaLimit, WipRiskItem, WipRiskResult, WipRiskLevel } from '../types';
 
 const LOOKBACK_DAYS = 84;

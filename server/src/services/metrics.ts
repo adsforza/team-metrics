@@ -1,12 +1,13 @@
 import Database from 'better-sqlite3';
 import type { FilterParams, KPIMetrics, TallaMetric, CFDPoint, ThroughputWeek, AgingIssue, Talla } from '../types';
+import { percentile } from '../../../shared/core/stats';
+import { computeKpis, computeCycleTimes } from '../../../shared/core/metrics';
+import type { CoreIssue, CoreTransition } from '../../../shared/core/types';
 
-function percentile(sorted: number[], p: number): number | null {
-  if (sorted.length === 0) return null;
-  const idx = (p / 100) * (sorted.length - 1);
-  const lo = Math.floor(idx);
-  const hi = Math.ceil(idx);
-  return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+function loadIssuesAndTransitions(db: Database.Database): { issues: CoreIssue[]; transitions: CoreTransition[] } {
+  const issues = db.prepare(`SELECT id, status, assignee_id, talla, created_at, last_transition_at FROM issues`).all() as CoreIssue[];
+  const transitions = db.prepare(`SELECT issue_id, from_status, to_status, transitioned_at FROM transitions`).all() as CoreTransition[];
+  return { issues, transitions };
 }
 
 function buildWhereClause(params: FilterParams): { where: string; args: any[] } {
@@ -35,68 +36,14 @@ function buildWhereClause(params: FilterParams): { where: string; args: any[] } 
 }
 
 export function getCycleTimes(db: Database.Database, params: FilterParams): number[] {
-  const { where, args } = buildWhereClause(params);
-  const fromDate = params.from ?? '2000-01-01';
-  const toDate = params.to ?? '2099-12-31';
-
-  const rows = db.prepare(`
-    SELECT
-      MIN(t_start.transitioned_at) AS start_at,
-      t_end.transitioned_at        AS end_at,
-      i.talla
-    FROM issues i
-    JOIN transitions t_start ON t_start.issue_id = i.id AND t_start.to_status IN ('In Progress','IN PROGRESS','EN CURSO','In development','To Do','TO DO','Tareas por hacer','Por Hacer','Backlog')
-    JOIN transitions t_end   ON t_end.issue_id   = i.id AND t_end.to_status   IN ('Done','Finalizada')
-    ${where ? where.replace('WHERE', 'WHERE') : 'WHERE 1=1'}
-      AND t_end.transitioned_at >= ? AND t_end.transitioned_at <= ?
-    GROUP BY i.id, t_end.transitioned_at
-    ORDER BY start_at
-  `).all(...args, fromDate + 'T00:00:00Z', toDate + 'T23:59:59Z') as any[];
-
-  const minDays: Record<string, number> = { XL: 1, L: 4 / 24, M: 1 / 24, S: 1 / 24 };
-
-  return rows
-    .map(r => ({ ct: (new Date(r.end_at).getTime() - new Date(r.start_at).getTime()) / (1000 * 60 * 60 * 24), talla: r.talla }))
-    .filter(({ ct, talla }) => ct >= (minDays[talla] ?? 1 / 24))
-    .map(({ ct }) => ct)
-    .sort((a, b) => a - b);
+  const { issues, transitions } = loadIssuesAndTransitions(db);
+  return computeCycleTimes(issues, transitions, params);
 }
 
 export function getKPIs(db: Database.Database, params: FilterParams): KPIMetrics {
-  const fromDate = params.from ?? '2000-01-01';
-  const toDate = params.to ?? '2099-12-31';
-
-  const wipRow = db.prepare(`
-    SELECT COUNT(*) as count FROM issues i
-    WHERE i.status NOT IN ('Done','Finalizada','Cancelled','Cancelado','To Do','Tareas por hacer','Backlog','Por Hacer')
-    ${params.assignee ? 'AND i.assignee_id = ?' : ''}
-  `).get(...(params.assignee ? [params.assignee] : [])) as any;
-
-  const throughputRow = db.prepare(`
-    SELECT COUNT(*) as count FROM issues i
-    JOIN transitions t ON t.issue_id = i.id AND t.to_status IN ('Done','Finalizada')
-    WHERE t.transitioned_at >= ? AND t.transitioned_at <= ?
-    ${params.assignee ? 'AND i.assignee_id = ?' : ''}
-  `).get(fromDate + 'T00:00:00Z', toDate + 'T23:59:59Z', ...(params.assignee ? [params.assignee] : [])) as any;
-
-  const cycleTimes = getCycleTimes(db, params);
+  const { issues, transitions } = loadIssuesAndTransitions(db);
   const agingThreshold = Math.max(1, parseInt(process.env.AGING_THRESHOLD_DAYS ?? '7', 10) || 7);
-  const agingCutoff = new Date(Date.now() - agingThreshold * 24 * 60 * 60 * 1000).toISOString();
-
-  const blockedRow = db.prepare(`
-    SELECT COUNT(*) as count FROM issues i
-    WHERE i.status NOT IN ('Done','Finalizada','Cancelled','Cancelado','To Do','Tareas por hacer','Backlog','Por Hacer')
-      AND i.last_transition_at <= ?
-      ${params.assignee ? 'AND i.assignee_id = ?' : ''}
-  `).get(agingCutoff, ...(params.assignee ? [params.assignee] : [])) as any;
-
-  return {
-    wip: wipRow.count,
-    throughput: throughputRow.count,
-    cycle_time_p50: percentile(cycleTimes, 50),
-    cycle_time_p85: percentile(cycleTimes, 85),
-    blocked_count: blockedRow.count,
-  };
+  return computeKpis(issues, transitions, params, agingThreshold);
 }
 
 export function getCycleTimeByTalla(db: Database.Database, params: FilterParams): TallaMetric[] {
