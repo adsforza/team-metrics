@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { parseJiraIssue, buildJql } from './jira';
+import { parseJiraIssue, buildJql, fetchBoardIssues } from './jira';
+import type { JiraHttp } from './jira';
 
 describe('parseJiraIssue', () => {
   const raw = {
@@ -44,5 +45,34 @@ describe('buildJql', () => {
   });
   it('adds updated filter trimmed to 16 chars with space', () => {
     expect(buildJql('OPS', '2026-01-01T00:00:00.000Z')).toBe('project = OPS AND updated >= "2026-01-01 00:00"');
+  });
+});
+
+const cfg = { baseUrl: 'https://t.atlassian.net', email: 'e@t.com', apiToken: 'tok', projectKey: 'OPS', boardId: 7 };
+const mkIssue = (k: string) => ({ key: k, fields: { summary: k, description: null, status: { name: 'To Do' }, assignee: null, created: 'c', updated: 'u' } });
+
+describe('fetchBoardIssues', () => {
+  it('paginates across pages and maps results; passes url/auth/params to transport', async () => {
+    const calls: any[] = [];
+    const http: JiraHttp = async (req) => {
+      calls.push(req);
+      if (req.params.startAt === 0) return { issues: [mkIssue('OPS-1'), mkIssue('OPS-2')], total: 3 };
+      return { issues: [mkIssue('OPS-3')], total: 3 };
+    };
+    const res = await fetchBoardIssues(cfg, http, undefined);
+    expect(res.map(r => r.id)).toEqual(['OPS-1', 'OPS-2', 'OPS-3']);
+    expect(calls[0].url).toBe('https://t.atlassian.net/rest/agile/1.0/board/7/issue');
+    expect(calls[0].auth).toEqual({ username: 'e@t.com', password: 'tok' });
+    expect(calls[0].params).toMatchObject({ jql: 'project = OPS', startAt: 0, maxResults: 50, expand: 'changelog' });
+    expect(calls[1].params.startAt).toBe(50);
+  });
+
+  it('stops on empty page and forwards updatedSince into jql', async () => {
+    const http: JiraHttp = async () => ({ issues: [], total: 0 });
+    const spy: any[] = [];
+    const wrapped: JiraHttp = async (req) => { spy.push(req); return http(req); };
+    const res = await fetchBoardIssues(cfg, wrapped, '2026-01-01T00:00:00.000Z');
+    expect(res).toEqual([]);
+    expect(spy[0].params.jql).toContain('updated >=');
   });
 });

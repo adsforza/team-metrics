@@ -47,3 +47,25 @@ export function buildJql(projectKey: string, updatedSince?: string): string {
     updatedSince ? `updated >= "${updatedSince.replace('T', ' ').substring(0, 16)}"` : null,
   ].filter(Boolean).join(' AND ');
 }
+
+export async function fetchBoardIssues(cfg: JiraConfig, http: JiraHttp, updatedSince?: string): Promise<JiraIssueRaw[]> {
+  const results: JiraIssueRaw[] = [];
+  let startAt = 0;
+  const maxResults = 50;
+  const jql = buildJql(cfg.projectKey, updatedSince);
+  const url = `${cfg.baseUrl}/rest/agile/1.0/board/${cfg.boardId}/issue`;
+  const auth = { username: cfg.email, password: cfg.apiToken };
+
+  while (true) {
+    const data = await http({
+      url, auth,
+      params: { jql, startAt, maxResults, expand: 'changelog', fields: 'summary,description,status,assignee,created,updated' },
+    });
+    const issues: any[] = Array.isArray(data.issues) ? data.issues : [];
+    const total: number = typeof data.total === 'number' ? data.total : 0;
+    for (const issue of issues) results.push(parseJiraIssue(issue));
+    if (issues.length === 0 || startAt + issues.length >= total) break;
+    startAt += maxResults;
+  }
+  return results;
+}
