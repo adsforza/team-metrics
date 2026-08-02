@@ -46,4 +46,33 @@ export function parseBatchResponse(rawText: string, issues: Array<{ id: string }
   return out;
 }
 
-// (classifyTallaBatch added in Task 2 — export `fallbackMap` implicitly reused there)
+const defaultSleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+
+export async function classifyTallaBatch(
+  issues: Array<{ id: string; title: string; description: string }>,
+  generate: GenerateFn,
+  retries = 6,
+  sleep: (ms: number) => Promise<void> = defaultSleep,
+): Promise<Map<string, TallaResult>> {
+  const prompt = buildBatchPrompt(issues);
+  const maxOutputTokens = issues.length * 40;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const text = await generate(prompt, { systemInstruction: PROMPT_SYSTEM, maxOutputTokens });
+      return parseBatchResponse(text, issues);
+    } catch (err: any) {
+      const is429 = err.message?.includes('429') || err.status === 429;
+      if (is429 && attempt < retries) {
+        const retryMatch = err.message?.match(/"retryDelay":"(\d+)s"/);
+        const wait = retryMatch ? (parseInt(retryMatch[1]) + 5) * 1000 : Math.pow(2, attempt + 1) * 60_000;
+        console.warn(`Gemini 429 – esperando ${wait / 1000}s (intento ${attempt + 1}/${retries})`);
+        await sleep(wait);
+        continue;
+      }
+      console.error('Gemini batch error:', err.message);
+      return fallbackMap(issues);
+    }
+  }
+  return fallbackMap(issues);
+}
