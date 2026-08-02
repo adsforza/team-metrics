@@ -4,8 +4,10 @@
   "version": "1.0.0",
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
+    "@google/generative-ai": "^0.24.1",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@shopify/react-native-skia": "2.6.2",
+    "@teammetrics/core": "file:../shared/core",
     "expo": "~57.0.0",
     "expo-constants": "~57.0.2",
     "expo-font": "~57.0.0",
