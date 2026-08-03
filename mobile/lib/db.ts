@@ -4,6 +4,7 @@ import type {
   WipRiskResult, BottleneckResult, ForecastResult,
   ComparisonResult, CFDPoint, Issue, TeamScorecardResponse, TallaMetric,
 } from './types';
+import type { CoreIssue, CoreTransition, CoreMember } from '@teammetrics/core/types';
 
 let _db: SQLite.SQLiteDatabase | null = null;
 
@@ -59,6 +60,18 @@ async function initSchema(db: SQLite.SQLiteDatabase): Promise<void> {
     );
     CREATE TABLE IF NOT EXISTS by_talla_snapshot (
       id INTEGER PRIMARY KEY DEFAULT 1, result_json TEXT, synced_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS issues (
+      id TEXT PRIMARY KEY, title TEXT, description TEXT, status TEXT,
+      assignee_id TEXT, talla TEXT, talla_confidence REAL,
+      created_at TEXT, updated_at TEXT, last_transition_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS transitions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, issue_id TEXT,
+      from_status TEXT, to_status TEXT, transitioned_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS team_members (
+      id TEXT PRIMARY KEY, display_name TEXT, email TEXT, avatar_url TEXT
     );
   `);
 }
@@ -166,4 +179,22 @@ export async function readCfd(db: SQLite.SQLiteDatabase): Promise<CFDPoint[]> {
 export async function hasData(db: SQLite.SQLiteDatabase): Promise<boolean> {
   const row = await db.getFirstAsync<{ id: number }>('SELECT id FROM kpi_snapshot WHERE id = 1');
   return row !== null;
+}
+
+export function loadCoreIssues(db: SQLite.SQLiteDatabase): Promise<CoreIssue[]> {
+  return db.getAllAsync<CoreIssue>(
+    'SELECT id, status, assignee_id, talla, created_at, last_transition_at FROM issues'
+  );
+}
+
+export function loadCoreTransitions(db: SQLite.SQLiteDatabase): Promise<CoreTransition[]> {
+  return db.getAllAsync<CoreTransition>(
+    'SELECT issue_id, from_status, to_status, transitioned_at FROM transitions'
+  );
+}
+
+export function loadCoreMembers(db: SQLite.SQLiteDatabase): Promise<CoreMember[]> {
+  return db.getAllAsync<CoreMember>(
+    'SELECT id, display_name, email, avatar_url FROM team_members ORDER BY display_name'
+  );
 }
