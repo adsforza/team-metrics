@@ -4,6 +4,9 @@ export interface CoreIssue {
   id: string; status: string; assignee_id: string | null;
   talla: Talla | null; created_at: string; last_transition_at: string | null;
 }
+// CoreIssue + title, for computations that need it (e.g. aging WIP) without
+// forcing every CoreIssue producer/consumer to carry a title field.
+export interface CoreIssueWithTitle extends CoreIssue { title: string }
 export interface CoreTransition {
   issue_id: string; from_status: string | null; to_status: string; transitioned_at: string;
 }
