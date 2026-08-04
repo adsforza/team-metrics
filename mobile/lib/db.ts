@@ -5,6 +5,7 @@ import type {
   ComparisonResult, CFDPoint, Issue, TeamScorecardResponse, TallaMetric,
 } from './types';
 import type { CoreIssue, CoreTransition, CoreMember } from '@teammetrics/core/types';
+import type { JiraIssueRaw } from '@teammetrics/core/jira';
 
 let _db: SQLite.SQLiteDatabase | null = null;
 
@@ -72,6 +73,9 @@ async function initSchema(db: SQLite.SQLiteDatabase): Promise<void> {
     );
     CREATE TABLE IF NOT EXISTS team_members (
       id TEXT PRIMARY KEY, display_name TEXT, email TEXT, avatar_url TEXT
+    );
+    CREATE TABLE IF NOT EXISTS board_sync (
+      board_id INTEGER PRIMARY KEY, last_synced_at TEXT
     );
   `);
 }
@@ -196,5 +200,61 @@ export function loadCoreTransitions(db: SQLite.SQLiteDatabase): Promise<CoreTran
 export function loadCoreMembers(db: SQLite.SQLiteDatabase): Promise<CoreMember[]> {
   return db.getAllAsync<CoreMember>(
     'SELECT id, display_name, email, avatar_url FROM team_members ORDER BY display_name'
+  );
+}
+
+// ── Raw Writers ──────────────────────────────────────────────────────────────
+
+export async function upsertRawIssues(db: SQLite.SQLiteDatabase, issues: JiraIssueRaw[]): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    for (const issue of issues) {
+      if (issue.assignee) {
+        await db.runAsync(
+          `INSERT INTO team_members (id, display_name, email, avatar_url) VALUES (?,?,?,?)
+           ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name, email=excluded.email, avatar_url=excluded.avatar_url`,
+          [issue.assignee.id, issue.assignee.display_name, issue.assignee.email, issue.assignee.avatar_url]
+        );
+      }
+      const lastTransition = issue.transitions.length
+        ? issue.transitions.reduce((a, b) => (a.transitioned_at > b.transitioned_at ? a : b)).transitioned_at
+        : null;
+      // Note: talla/talla_confidence intentionally omitted — new issues default NULL and the
+      // ON CONFLICT SET does not touch them (classification is a separate step).
+      await db.runAsync(
+        `INSERT INTO issues (id, title, description, status, assignee_id, created_at, updated_at, last_transition_at)
+         VALUES (?,?,?,?,?,?,?,?)
+         ON CONFLICT(id) DO UPDATE SET
+           title=excluded.title, description=excluded.description, status=excluded.status,
+           assignee_id=excluded.assignee_id, updated_at=excluded.updated_at, last_transition_at=excluded.last_transition_at`,
+        [issue.id, issue.title, issue.description, issue.status, issue.assignee?.id ?? null, issue.created_at, issue.updated_at, lastTransition]
+      );
+      for (const t of issue.transitions) {
+        const exists = await db.getFirstAsync(
+          `SELECT id FROM transitions WHERE issue_id = ? AND to_status = ? AND transitioned_at = ?`,
+          [issue.id, t.to_status, t.transitioned_at]
+        );
+        if (!exists) {
+          await db.runAsync(
+            `INSERT INTO transitions (issue_id, from_status, to_status, transitioned_at) VALUES (?,?,?,?)`,
+            [issue.id, t.from_status, t.to_status, t.transitioned_at]
+          );
+        }
+      }
+    }
+  });
+}
+
+export async function getBoardLastSync(db: SQLite.SQLiteDatabase, boardId: number): Promise<string | undefined> {
+  const row = await db.getFirstAsync<{ last_synced_at: string }>(
+    'SELECT last_synced_at FROM board_sync WHERE board_id = ?', [boardId]
+  );
+  return row?.last_synced_at;
+}
+
+export async function setBoardLastSync(db: SQLite.SQLiteDatabase, boardId: number, iso: string): Promise<void> {
+  await db.runAsync(
+    `INSERT INTO board_sync (board_id, last_synced_at) VALUES (?,?)
+     ON CONFLICT(board_id) DO UPDATE SET last_synced_at=excluded.last_synced_at`,
+    [boardId, iso]
   );
 }
