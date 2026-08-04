@@ -7,13 +7,13 @@ function stubDb(rowsBySql: (sql: string) => any[]) {
 }
 
 describe('core loaders', () => {
-  it('loadCoreIssues selects the CoreIssue columns and returns typed rows', async () => {
-    const rows = [{ id: 'A', status: 'In Progress', assignee_id: 'u1', talla: 'M', created_at: 'c', last_transition_at: 'l' }];
+  it('loadCoreIssues selects the CoreIssueWithTitle columns and returns typed rows', async () => {
+    const rows = [{ id: 'A', title: 'Issue A', status: 'In Progress', assignee_id: 'u1', talla: 'M', created_at: 'c', last_transition_at: 'l' }];
     const { db, calls } = stubDb(() => rows);
     const res = await loadCoreIssues(db);
     expect(res).toEqual(rows);
     expect(calls[0]).toContain('FROM issues');
-    expect(calls[0]).toMatch(/id, status, assignee_id, talla, created_at, last_transition_at/);
+    expect(calls[0]).toMatch(/id, title, status, assignee_id, talla, created_at, last_transition_at/);
   });
 
   it('loadCoreTransitions selects transition columns', async () => {

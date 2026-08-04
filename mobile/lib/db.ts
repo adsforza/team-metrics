@@ -4,7 +4,7 @@ import type {
   WipRiskResult, BottleneckResult, ForecastResult,
   ComparisonResult, CFDPoint, Issue, TeamScorecardResponse, TallaMetric,
 } from './types';
-import type { CoreIssue, CoreTransition, CoreMember } from '@teammetrics/core/types';
+import type { CoreIssueWithTitle, CoreTransition, CoreMember } from '@teammetrics/core/types';
 import type { JiraIssueRaw } from '@teammetrics/core/jira';
 
 let _db: SQLite.SQLiteDatabase | null = null;
@@ -185,9 +185,9 @@ export async function hasData(db: SQLite.SQLiteDatabase): Promise<boolean> {
   return row !== null;
 }
 
-export function loadCoreIssues(db: SQLite.SQLiteDatabase): Promise<CoreIssue[]> {
-  return db.getAllAsync<CoreIssue>(
-    'SELECT id, status, assignee_id, talla, created_at, last_transition_at FROM issues'
+export function loadCoreIssues(db: SQLite.SQLiteDatabase): Promise<CoreIssueWithTitle[]> {
+  return db.getAllAsync<CoreIssueWithTitle>(
+    'SELECT id, title, status, assignee_id, talla, created_at, last_transition_at FROM issues'
   );
 }
 

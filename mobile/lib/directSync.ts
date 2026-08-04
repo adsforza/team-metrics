@@ -3,6 +3,7 @@
 // the shared/core compute functions directly in-process (no DB, no network).
 // `now` is threaded through every date-dependent call so the result is fully deterministic
 // under test.
+import type * as SQLite from 'expo-sqlite';
 import { computeKpis } from '@teammetrics/core/metrics';
 import {
   computeThroughputWeekly, computeCFD, computeAgingWIP, computeCycleTimeByTalla,
@@ -12,12 +13,23 @@ import { computeComparison } from '@teammetrics/core/comparison';
 import { computeWipRisk } from '@teammetrics/core/wipRisk';
 import { computeForecast } from '@teammetrics/core/forecast';
 import { computeBottleneck } from '@teammetrics/core/bottleneck';
+import { fetchBoardIssues } from '@teammetrics/core/jira';
+import type { JiraConfig, JiraHttp } from '@teammetrics/core/jira';
+import { classifyTallaBatch } from '@teammetrics/core/classify';
+import type { GenerateFn } from '@teammetrics/core/classify';
 import type {
   CoreIssueWithTitle, CoreTransition, CoreMember, CoreFilter,
 } from '@teammetrics/core/types';
 import type { SnapshotBundle } from './snapshots';
+import { writeSnapshots } from './snapshots';
 import type { Issue } from './types';
 import { getLastNMondays } from './weeks';
+import {
+  upsertRawIssues, getBoardLastSync, setBoardLastSync,
+  readUnclassifiedIssues, updateIssueTallas,
+  loadCoreIssues, loadCoreTransitions, loadCoreMembers,
+} from './db';
+import { jiraHttpFetch, makeGeminiGenerate } from './transports';
 
 const MS_DAY = 1000 * 60 * 60 * 24;
 
@@ -93,4 +105,99 @@ export function computeBundle(
     comparisonWeeks: weeks,
     comparisons,
   };
+}
+
+// ── directSync: full mobile-native sync orchestrator ────────────────────────
+// Talks to Jira + Gemini directly (no server in the loop), persists raw issues/
+// transitions into SQLite, classifies newly-seen issues, recomputes every metric
+// via computeBundle above, and writes the resulting snapshot tables — the same
+// tables `performSync` (server-backed sync) writes, so the read side is unaware
+// of which sync path populated them.
+
+const CLASSIFY_BATCH_SIZE = 20;
+
+export interface DirectSyncError { endpoint: string; message: string }
+
+export interface DirectSyncResult {
+  success: boolean;
+  errors: DirectSyncError[];
+  syncedAt: string;
+  okCount: number;
+  failCount: number;
+}
+
+export interface DirectSyncConfig {
+  boards: JiraConfig[];
+  geminiKey: string;
+  filters: { from?: string; to?: string; assignee?: string | null };
+}
+
+export interface DirectSyncDeps {
+  http?: JiraHttp;
+  makeGen?: (key: string) => GenerateFn;
+  now?: Date;
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+function errMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+export async function directSync(
+  db: SQLite.SQLiteDatabase,
+  config: DirectSyncConfig,
+  deps: DirectSyncDeps = {},
+): Promise<DirectSyncResult> {
+  const http = deps.http ?? jiraHttpFetch;
+  const makeGen = deps.makeGen ?? makeGeminiGenerate;
+  const now = deps.now ?? new Date();
+  const syncedAt = now.toISOString();
+
+  const errors: DirectSyncError[] = [];
+  let okCount = 0;
+  let failCount = 0;
+
+  for (const boardCfg of config.boards) {
+    try {
+      const since = await getBoardLastSync(db, boardCfg.boardId);
+      const raw = await fetchBoardIssues(boardCfg, http, since);
+      await upsertRawIssues(db, raw);
+      await setBoardLastSync(db, boardCfg.boardId, syncedAt);
+      okCount += 1;
+    } catch (err) {
+      failCount += 1;
+      errors.push({ endpoint: `jira:board:${boardCfg.boardId}`, message: errMessage(err) });
+    }
+  }
+
+  try {
+    const pending = await readUnclassifiedIssues(db);
+    const batches = chunk(pending, CLASSIFY_BATCH_SIZE);
+    for (let i = 0; i < batches.length; i++) {
+      try {
+        const results = await classifyTallaBatch(batches[i], makeGen(config.geminiKey));
+        await updateIssueTallas(db, results);
+        okCount += 1;
+      } catch (err) {
+        failCount += 1;
+        errors.push({ endpoint: `classify:batch:${i}`, message: errMessage(err) });
+      }
+    }
+  } catch (err) {
+    failCount += 1;
+    errors.push({ endpoint: 'classify:read-pending', message: errMessage(err) });
+  }
+
+  const issues = await loadCoreIssues(db);
+  const transitions = await loadCoreTransitions(db);
+  const members = await loadCoreMembers(db);
+  const bundle = computeBundle(issues, transitions, members, config.filters, now);
+  await writeSnapshots(db, bundle, syncedAt);
+
+  return { success: errors.length === 0, errors, syncedAt, okCount, failCount };
 }
