@@ -244,6 +244,25 @@ export async function upsertRawIssues(db: SQLite.SQLiteDatabase, issues: JiraIss
   });
 }
 
+export async function readUnclassifiedIssues(db: SQLite.SQLiteDatabase): Promise<{ id: string; title: string; description: string }[]> {
+  return db.getAllAsync<{ id: string; title: string; description: string }>(
+    'SELECT id, title, description FROM issues WHERE talla IS NULL'
+  );
+}
+
+export async function updateIssueTallas(
+  db: SQLite.SQLiteDatabase,
+  results: Map<string, { talla: string | null; confidence: number }>,
+): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    for (const [id, r] of results) {
+      if (r.talla) {
+        await db.runAsync('UPDATE issues SET talla=?, talla_confidence=? WHERE id=?', [r.talla, r.confidence, id]);
+      }
+    }
+  });
+}
+
 export async function getBoardLastSync(db: SQLite.SQLiteDatabase, boardId: number): Promise<string | undefined> {
   const row = await db.getFirstAsync<{ last_synced_at: string }>(
     'SELECT last_synced_at FROM board_sync WHERE board_id = ?', [boardId]
