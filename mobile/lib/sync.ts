@@ -6,6 +6,7 @@ import type {
   WipRiskResult, BottleneckResult, ForecastResult, ComparisonResult,
   CFDPoint, Issue, TallaMetric,
 } from './types';
+import { writeSnapshots, type SnapshotBundle } from './snapshots';
 
 import { getLastNMondays } from './weeks';
 
@@ -52,110 +53,38 @@ export async function performSync(dateParams?: { from: string; to: string }, ass
     })
   );
 
-  await db.withTransactionAsync(async () => {
-    if (kpi.status === 'fulfilled') {
-      const k = kpi.value;
-      await db.runAsync(
-        'INSERT OR REPLACE INTO kpi_snapshot (id, wip, throughput, cycle_time_p50, cycle_time_p85, blocked_count, synced_at) VALUES (1,?,?,?,?,?,?)',
-        [k.wip, k.throughput, k.cycle_time_p50, k.cycle_time_p85, k.blocked_count, syncedAt]
-      );
-    } else { errors.push({ endpoint: '/api/metrics', message: String(kpi.reason) }); }
-
-    if (throughput.status === 'fulfilled') {
-      await db.runAsync('DELETE FROM throughput_weekly');
-      for (const w of throughput.value) {
-        await db.runAsync(
-          'INSERT INTO throughput_weekly (week, count, by_talla) VALUES (?,?,?)',
-          [w.week, w.count, JSON.stringify(w.by_talla)]
-        );
-      }
-    } else { errors.push({ endpoint: '/api/metrics/throughput', message: String(throughput.reason) }); }
-
-    if (team.status === 'fulfilled') {
-      await db.runAsync('DELETE FROM scorecard_members');
-      const t = team.value;
-      await db.runAsync(
-        'INSERT INTO scorecard_members (member_id, member_json, synced_at) VALUES (?,?,?)',
-        ['__team__', JSON.stringify({ member: { id: '__team__', display_name: 'Equipo', email: '', avatar_url: null }, ...t.team }), syncedAt]
-      );
-      for (const m of t.members) {
-        await db.runAsync(
-          'INSERT INTO scorecard_members (member_id, member_json, synced_at) VALUES (?,?,?)',
-          [m.member.id, JSON.stringify(m), syncedAt]
-        );
-      }
-      await db.runAsync(
-        'INSERT OR REPLACE INTO scorecard_context_snapshot (id, context_json, synced_at) VALUES (1,?,?)',
-        [JSON.stringify(t.context), syncedAt]
-      );
-    } else { errors.push({ endpoint: '/api/team', message: String(team.reason) }); }
-
-    if (aging.status === 'fulfilled') {
-      await db.runAsync('DELETE FROM aging_issues');
-      for (const a of aging.value) {
-        await db.runAsync(
-          'INSERT INTO aging_issues (issue_id, title, talla, status, days_in_status, assignee_id) VALUES (?,?,?,?,?,?)',
-          [a.issue_id, a.title, a.talla, a.status, a.days_in_status, a.assignee_id]
-        );
-      }
-    } else { errors.push({ endpoint: '/api/metrics/aging', message: String(aging.reason) }); }
-
-    for (const [result, endpoint, table] of [
-      [wipRisk, '/api/metrics/wip-risk', 'wip_risk_snapshot'],
-      [bottleneck, '/api/metrics/bottleneck', 'bottleneck_snapshot'],
-      [forecast, '/api/metrics/forecast', 'forecast_snapshot'],
-    ] as const) {
-      if (result.status === 'fulfilled') {
-        await db.runAsync(
-          `INSERT OR REPLACE INTO ${table} (id, result_json, synced_at) VALUES (1,?,?)`,
-          [JSON.stringify(result.value), syncedAt]
-        );
-      } else { errors.push({ endpoint, message: String(result.reason) }); }
+  if (kpi.status !== 'fulfilled') errors.push({ endpoint: '/api/metrics', message: String(kpi.reason) });
+  if (throughput.status !== 'fulfilled') errors.push({ endpoint: '/api/metrics/throughput', message: String(throughput.reason) });
+  if (team.status !== 'fulfilled') errors.push({ endpoint: '/api/team', message: String(team.reason) });
+  if (aging.status !== 'fulfilled') errors.push({ endpoint: '/api/metrics/aging', message: String(aging.reason) });
+  if (wipRisk.status !== 'fulfilled') errors.push({ endpoint: '/api/metrics/wip-risk', message: String(wipRisk.reason) });
+  if (bottleneck.status !== 'fulfilled') errors.push({ endpoint: '/api/metrics/bottleneck', message: String(bottleneck.reason) });
+  if (forecast.status !== 'fulfilled') errors.push({ endpoint: '/api/metrics/forecast', message: String(forecast.reason) });
+  if (cfd.status !== 'fulfilled') errors.push({ endpoint: '/api/metrics/cfd', message: String(cfd.reason) });
+  if (issues.status !== 'fulfilled') errors.push({ endpoint: '/api/issues', message: String(issues.reason) });
+  if (byTalla.status !== 'fulfilled') errors.push({ endpoint: '/api/metrics/by-talla', message: String(byTalla.reason) });
+  for (let i = 0; i < comparisons.length; i++) {
+    const c = comparisons[i];
+    if (c.status !== 'fulfilled') {
+      errors.push({ endpoint: `/api/metrics/comparison?week=${mondays[i]}`, message: String(c.reason) });
     }
+  }
 
-    // Prune weeks outside the current window so stale/misaligned keys (e.g. a
-    // non-Monday date from an old timezone bug) don't linger in the selector.
-    await db.runAsync(
-      `DELETE FROM comparison_snapshot WHERE week NOT IN (${mondays.map(() => '?').join(',')})`,
-      mondays
-    );
-    for (let i = 0; i < comparisons.length; i++) {
-      const c = comparisons[i];
-      if (c.status === 'fulfilled') {
-        await db.runAsync(
-          'INSERT OR REPLACE INTO comparison_snapshot (week, result_json, synced_at) VALUES (?,?,?)',
-          [c.value.week, JSON.stringify(c.value), syncedAt]
-        );
-      } else { errors.push({ endpoint: `/api/metrics/comparison?week=${mondays[i]}`, message: String(c.reason) }); }
-    }
-
-    if (cfd.status === 'fulfilled') {
-      await db.runAsync('DELETE FROM cfd_points');
-      for (const p of cfd.value) {
-        await db.runAsync(
-          'INSERT INTO cfd_points (date, todo, in_progress, in_review, in_qa, done) VALUES (?,?,?,?,?,?)',
-          [p.date, p.todo, p.in_progress, p.in_review, p.in_qa, p.done]
-        );
-      }
-    } else { errors.push({ endpoint: '/api/metrics/cfd', message: String(cfd.reason) }); }
-
-    if (issues.status === 'fulfilled') {
-      await db.runAsync('DELETE FROM issues_snapshot');
-      for (const i of issues.value) {
-        await db.runAsync(
-          'INSERT INTO issues_snapshot (issue_id, title, status, talla, assignee_id, ct_days, last_transition_at, created_at) VALUES (?,?,?,?,?,?,?,?)',
-          [i.id, i.title, i.status, i.talla, i.assignee_id, i.ct_days, i.last_transition_at, i.created_at]
-        );
-      }
-    } else { errors.push({ endpoint: '/api/issues', message: String(issues.reason) }); }
-
-    if (byTalla.status === 'fulfilled') {
-      await db.runAsync(
-        'INSERT OR REPLACE INTO by_talla_snapshot (id, result_json, synced_at) VALUES (1,?,?)',
-        [JSON.stringify(byTalla.value), syncedAt]
-      );
-    } else { errors.push({ endpoint: '/api/metrics/by-talla', message: String(byTalla.reason) }); }
-  });
+  const bundle: SnapshotBundle = {
+    kpi: kpi.status === 'fulfilled' ? kpi.value : undefined,
+    throughput: throughput.status === 'fulfilled' ? throughput.value : undefined,
+    team: team.status === 'fulfilled' ? team.value : undefined,
+    aging: aging.status === 'fulfilled' ? aging.value : undefined,
+    wipRisk: wipRisk.status === 'fulfilled' ? wipRisk.value : undefined,
+    bottleneck: bottleneck.status === 'fulfilled' ? bottleneck.value : undefined,
+    forecast: forecast.status === 'fulfilled' ? forecast.value : undefined,
+    cfd: cfd.status === 'fulfilled' ? cfd.value : undefined,
+    issues: issues.status === 'fulfilled' ? issues.value : undefined,
+    byTalla: byTalla.status === 'fulfilled' ? byTalla.value : undefined,
+    comparisonWeeks: mondays,
+    comparisons: comparisons.flatMap(c => c.status === 'fulfilled' ? [{ week: c.value.week, result: c.value }] : []),
+  };
+  await writeSnapshots(db, bundle, syncedAt);
 
   const allResults = [
     kpi, throughput, team, aging, wipRisk, bottleneck, forecast, cfd, issues, byTalla,
