@@ -7,11 +7,13 @@ import { BASE_URL_KEY, DEFAULT_BASE_URL, setBaseUrl } from '../../lib/api';
 import { useSyncStore } from '../../store/syncStore';
 import { useFilterStore } from '../../store/filterStore';
 import { getDb, readTeamMemberNames } from '../../lib/db';
+import { getDirectConfigFields, setDirectConfigFields, type DirectConfigFields } from '../../lib/directConfig';
 
 const TALLA_OPTIONS = ['S', 'M', 'L', 'XL'] as const;
 
 export default function AjustesScreen() {
   const [url, setUrl] = useState(DEFAULT_BASE_URL);
+  const [dc, setDc] = useState<Partial<DirectConfigFields>>({});
   const { sync, loading, lastSyncedAt } = useSyncStore();
   const { assignee, talla, setAssignee, setTalla } = useFilterStore();
 
@@ -24,6 +26,7 @@ export default function AjustesScreen() {
   useEffect(() => {
     AsyncStorage.getItem(BASE_URL_KEY).then(v => { if (v) setUrl(v); });
     getDb().then(db => readTeamMemberNames(db)).then(setMembers).catch(console.error);
+    getDirectConfigFields().then(setDc).catch(console.error);
   }, []);
 
   const handleUrlBlur = () => setBaseUrl(url);
@@ -60,6 +63,90 @@ export default function AjustesScreen() {
           placeholderTextColor={Colors.textSubtle}
         />
         <Text style={s.hint}>Cambiá la URL para conectar a un servidor con IP pública.</Text>
+      </View>
+
+      {/* Jira directo */}
+      <Text style={[Typography.label, s.sectionLabel]}>Jira directo (modo sin backend)</Text>
+      <View style={Card.base}>
+        <Text style={[Typography.label, { marginBottom: 6 }]}>URL base</Text>
+        <TextInput
+          style={s.input}
+          value={dc.baseUrl ?? ''}
+          onChangeText={t => setDc(prev => ({ ...prev, baseUrl: t }))}
+          autoCapitalize="none"
+          autoCorrect={false}
+          placeholder="https://jira.example.com"
+          placeholderTextColor={Colors.textSubtle}
+        />
+
+        <Text style={[Typography.label, { marginBottom: 6, marginTop: 12 }]}>Email</Text>
+        <TextInput
+          style={s.input}
+          value={dc.email ?? ''}
+          onChangeText={t => setDc(prev => ({ ...prev, email: t }))}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="email-address"
+          placeholder="tu@email.com"
+          placeholderTextColor={Colors.textSubtle}
+        />
+
+        <Text style={[Typography.label, { marginBottom: 6, marginTop: 12 }]}>API Token</Text>
+        <TextInput
+          style={s.input}
+          value={dc.apiToken ?? ''}
+          onChangeText={t => setDc(prev => ({ ...prev, apiToken: t }))}
+          autoCapitalize="none"
+          autoCorrect={false}
+          secureTextEntry
+          placeholder="••••••••••"
+          placeholderTextColor={Colors.textSubtle}
+        />
+
+        <Text style={[Typography.label, { marginBottom: 6, marginTop: 12 }]}>Project Key</Text>
+        <TextInput
+          style={s.input}
+          value={dc.projectKey ?? ''}
+          onChangeText={t => setDc(prev => ({ ...prev, projectKey: t }))}
+          autoCapitalize="none"
+          autoCorrect={false}
+          placeholder="PROJ"
+          placeholderTextColor={Colors.textSubtle}
+        />
+
+        <Text style={[Typography.label, { marginBottom: 6, marginTop: 12 }]}>Board IDs</Text>
+        <TextInput
+          style={s.input}
+          value={dc.boardIds ?? ''}
+          onChangeText={t => setDc(prev => ({ ...prev, boardIds: t }))}
+          autoCapitalize="none"
+          autoCorrect={false}
+          placeholder="7,9"
+          placeholderTextColor={Colors.textSubtle}
+        />
+
+        <Text style={[Typography.label, { marginBottom: 6, marginTop: 12 }]}>Gemini API Key</Text>
+        <TextInput
+          style={s.input}
+          value={dc.geminiKey ?? ''}
+          onChangeText={t => setDc(prev => ({ ...prev, geminiKey: t }))}
+          autoCapitalize="none"
+          autoCorrect={false}
+          secureTextEntry
+          placeholder="••••••••••"
+          placeholderTextColor={Colors.textSubtle}
+        />
+
+        <TouchableOpacity
+          style={[s.syncButton, { marginTop: 14 }]}
+          onPress={async () => {
+            await setDirectConfigFields(dc);
+            Alert.alert('Guardado', 'Config del modo directo guardada');
+          }}
+        >
+          <Feather name="save" size={13} color="#fff" />
+          <Text style={s.syncButtonText}>Guardar</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Sincronización */}
