@@ -148,6 +148,52 @@ function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+// Clasifica todos los issues sin talla en lotes. Best-effort: cada lote que falla
+// (típicamente cuota de Gemini) se registra pero no aborta el resto.
+async function classifyAllPending(
+  db: SQLite.SQLiteDatabase,
+  geminiKey: string,
+  makeGen: (key: string) => GenerateFn,
+): Promise<{ okCount: number; failCount: number; classified: number; errors: DirectSyncError[] }> {
+  const errors: DirectSyncError[] = [];
+  let okCount = 0;
+  let failCount = 0;
+  let classified = 0;
+  try {
+    const pending = await readUnclassifiedIssues(db);
+    const batches = chunk(pending, CLASSIFY_BATCH_SIZE);
+    for (let i = 0; i < batches.length; i++) {
+      try {
+        const results = await classifyTallaBatch(batches[i], makeGen(geminiKey));
+        await updateIssueTallas(db, results);
+        for (const r of results.values()) if (r.talla != null) classified += 1;
+        okCount += 1;
+      } catch (err) {
+        failCount += 1;
+        errors.push({ endpoint: `classify:batch:${i}`, message: errMessage(err) });
+      }
+    }
+  } catch (err) {
+    failCount += 1;
+    errors.push({ endpoint: 'classify:read-pending', message: errMessage(err) });
+  }
+  return { okCount, failCount, classified, errors };
+}
+
+// Recalcula todos los snapshots desde los datos crudos locales y los persiste.
+async function recomputeSnapshots(
+  db: SQLite.SQLiteDatabase,
+  filters: DirectSyncConfig['filters'],
+  now: Date,
+  syncedAt: string,
+): Promise<void> {
+  const issues = await loadCoreIssues(db);
+  const transitions = await loadCoreTransitions(db);
+  const members = await loadCoreMembers(db);
+  const bundle = computeBundle(issues, transitions, members, filters, now);
+  await writeSnapshots(db, bundle, syncedAt);
+}
+
 export async function directSync(
   db: SQLite.SQLiteDatabase,
   config: DirectSyncConfig,
@@ -175,29 +221,46 @@ export async function directSync(
     }
   }
 
-  try {
-    const pending = await readUnclassifiedIssues(db);
-    const batches = chunk(pending, CLASSIFY_BATCH_SIZE);
-    for (let i = 0; i < batches.length; i++) {
-      try {
-        const results = await classifyTallaBatch(batches[i], makeGen(config.geminiKey));
-        await updateIssueTallas(db, results);
-        okCount += 1;
-      } catch (err) {
-        failCount += 1;
-        errors.push({ endpoint: `classify:batch:${i}`, message: errMessage(err) });
-      }
-    }
-  } catch (err) {
-    failCount += 1;
-    errors.push({ endpoint: 'classify:read-pending', message: errMessage(err) });
-  }
+  const cls = await classifyAllPending(db, config.geminiKey, makeGen);
+  okCount += cls.okCount;
+  failCount += cls.failCount;
+  errors.push(...cls.errors);
 
-  const issues = await loadCoreIssues(db);
-  const transitions = await loadCoreTransitions(db);
-  const members = await loadCoreMembers(db);
-  const bundle = computeBundle(issues, transitions, members, config.filters, now);
-  await writeSnapshots(db, bundle, syncedAt);
+  await recomputeSnapshots(db, config.filters, now, syncedAt);
 
   return { success: errors.length === 0, errors, syncedAt, okCount, failCount };
+}
+
+// ── directReclassify: reclasifica sin bajar de Jira ─────────────────────────
+// Igual que la fase de clasificación de directSync (lee pendientes → Gemini →
+// recompute snapshots), pero sin el fetch. Para el botón "Reclasificar" cuando
+// no hay backend: rellena tallas al resetearse la cuota de Gemini.
+
+export interface DirectReclassifyResult {
+  classified: number;
+  okCount: number;
+  failCount: number;
+  errors: DirectSyncError[];
+  syncedAt: string;
+}
+
+export async function directReclassify(
+  db: SQLite.SQLiteDatabase,
+  config: DirectSyncConfig,
+  deps: DirectSyncDeps = {},
+): Promise<DirectReclassifyResult> {
+  const makeGen = deps.makeGen ?? makeGeminiGenerate;
+  const now = deps.now ?? new Date();
+  const syncedAt = now.toISOString();
+
+  const cls = await classifyAllPending(db, config.geminiKey, makeGen);
+  await recomputeSnapshots(db, config.filters, now, syncedAt);
+
+  return {
+    classified: cls.classified,
+    okCount: cls.okCount,
+    failCount: cls.failCount,
+    errors: cls.errors,
+    syncedAt,
+  };
 }

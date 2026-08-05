@@ -21,6 +21,18 @@ export async function apiFetch<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// Dispara la reclasificación en el server. El endpoint responde al instante
+// (status: 'started') y clasifica en segundo plano, limitado por la cuota de Gemini.
+export async function triggerReclassify(): Promise<{ status: string; pending: number }> {
+  const base = await getBaseUrl();
+  const res = await fetch(`${base}/api/sync/reclassify`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status} /api/sync/reclassify`);
+  return res.json() as Promise<{ status: string; pending: number }>;
+}
+
 export async function isServerReachable(): Promise<boolean> {
   const base = await getBaseUrl();
   try {

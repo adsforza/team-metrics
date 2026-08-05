@@ -1,15 +1,20 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LAST_SYNCED_KEY, performSync, SyncError } from '../lib/sync';
-import { isServerReachable } from '../lib/api';
+import { isServerReachable, triggerReclassify } from '../lib/api';
 import { getDirectConfig } from '../lib/directConfig';
-import { directSync } from '../lib/directSync';
+import { directSync, directReclassify } from '../lib/directSync';
 import { getDb } from '../lib/db';
 import { dateRangeFor, useFilterStore } from './filterStore';
 import type { SyncStatus } from '../lib/syncStatus';
 
 export type { SyncStatus };
 export type SyncMode = 'backend' | 'direct' | null;
+
+export type ReclassifyOutcome =
+  | { mode: 'backend'; pending: number }
+  | { mode: 'direct'; classified: number; failCount: number }
+  | { mode: 'none' };
 
 interface SyncState {
   loading: boolean;
@@ -20,6 +25,7 @@ interface SyncState {
   dataVersion: number;
   loadLastSynced: () => Promise<void>;
   sync: () => Promise<void>;
+  reclassify: () => Promise<ReclassifyOutcome>;
 }
 
 export const useSyncStore = create<SyncState>((set, get) => ({
@@ -80,6 +86,44 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         lastSyncStatus: 'offline',
         errors: [{ endpoint: 'global', message: String(err) }],
       });
+    }
+  },
+
+  reclassify: async () => {
+    if (get().loading) return { mode: 'none' };
+    set({ loading: true, errors: [] });
+
+    const { timeRange, assignee } = useFilterStore.getState();
+    const range = dateRangeFor(timeRange);
+
+    try {
+      // Con backend disponible, la reclasificación corre en el server (mejor cuota/latencia).
+      if (await isServerReachable()) {
+        const r = await triggerReclassify();
+        set({ loading: false });
+        return { mode: 'backend', pending: r.pending ?? 0 };
+      }
+
+      const cfg = await getDirectConfig();
+      if (!cfg) {
+        set({ loading: false, lastSyncStatus: 'offline' });
+        return { mode: 'none' };
+      }
+      const db = await getDb();
+      const result = await directReclassify(db, {
+        boards: cfg.boards,
+        geminiKey: cfg.geminiKey,
+        filters: { from: range.from, to: range.to, assignee },
+      });
+      set({
+        loading: false,
+        errors: result.errors,
+        dataVersion: get().dataVersion + 1,
+      });
+      return { mode: 'direct', classified: result.classified, failCount: result.failCount };
+    } catch (err) {
+      set({ loading: false, errors: [{ endpoint: 'reclassify', message: String(err) }] });
+      return { mode: 'none' };
     }
   },
 }));

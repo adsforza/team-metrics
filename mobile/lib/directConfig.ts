@@ -22,7 +22,9 @@ export async function getDirectConfigFields(): Promise<Partial<DirectConfigField
 export async function setDirectConfigFields(fields: Partial<DirectConfigFields>): Promise<void> {
   for (const field of Object.keys(FIELD_TO_KEY) as (keyof DirectConfigFields)[]) {
     const v = fields[field];
-    if (v !== undefined) await SecureStore.setItemAsync(FIELD_TO_KEY[field], String(v));
+    // trim: pegar un token/email en iOS suele dejar un espacio o newline al final,
+    // que rompe el Basic auth contra Jira (401). Ver getDirectConfig (defensa en lectura).
+    if (v !== undefined) await SecureStore.setItemAsync(FIELD_TO_KEY[field], String(v).trim());
   }
 }
 
@@ -32,8 +34,12 @@ export async function getDirectConfig(): Promise<{ boards: JiraConfig[]; geminiK
   const baseUrl = f.baseUrl.replace(/\/+$/, '');
   const boardIds = f.boardIds.split(',').map(s => Number(s.trim())).filter(n => !isNaN(n) && n > 0);
   if (boardIds.length === 0) return null;
+  // defensa en lectura: salva valores ya guardados con espacios al final sin re-tipear.
+  const email = f.email!.trim();
+  const apiToken = f.apiToken!.trim();
+  const projectKey = f.projectKey!.trim();
   const boards: JiraConfig[] = boardIds.map(boardId => ({
-    baseUrl, email: f.email!, apiToken: f.apiToken!, projectKey: f.projectKey!, boardId,
+    baseUrl, email, apiToken, projectKey, boardId,
   }));
-  return { boards, geminiKey: f.geminiKey };
+  return { boards, geminiKey: f.geminiKey.trim() };
 }
