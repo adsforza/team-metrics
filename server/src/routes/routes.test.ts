@@ -113,3 +113,43 @@ describe('GET /api/metrics/comparison', () => {
     expect(typeof res.body.wip.delta).toBe('number');
   });
 });
+
+describe('POST /api/tallas', () => {
+  beforeAll(() => {
+    // TAL-1 sin talla (debe llenarse); TAL-2 ya clasificado (no debe pisarse)
+    mockDb.prepare(`INSERT INTO issues VALUES ('TAL-1','a','','Done','u1',NULL,NULL,'2026-05-01T00:00:00Z','2026-05-02T00:00:00Z','2026-05-02T00:00:00Z','2026-05-02T00:00:00Z')`).run();
+    mockDb.prepare(`INSERT INTO issues VALUES ('TAL-2','b','','Done','u1','L',0.7,'2026-05-01T00:00:00Z','2026-05-02T00:00:00Z','2026-05-02T00:00:00Z','2026-05-02T00:00:00Z')`).run();
+  });
+
+  it('llena solo los huecos y no pisa tallas existentes', async () => {
+    const res = await request(app).post('/api/tallas').send([
+      { id: 'TAL-1', talla: 'S', confidence: 0.9 },
+      { id: 'TAL-2', talla: 'M', confidence: 0.9 },
+      { id: 'NOPE', talla: 'M', confidence: 0.9 },
+    ]);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ updated: 1 });
+    const t1 = mockDb.prepare(`SELECT talla FROM issues WHERE id='TAL-1'`).get() as any;
+    const t2 = mockDb.prepare(`SELECT talla FROM issues WHERE id='TAL-2'`).get() as any;
+    expect(t1.talla).toBe('S');
+    expect(t2.talla).toBe('L'); // intacto
+  });
+
+  it('ignora items con talla inválida', async () => {
+    mockDb.prepare(`INSERT INTO issues VALUES ('TAL-3','c','','Done','u1',NULL,NULL,'2026-05-01T00:00:00Z','2026-05-02T00:00:00Z','2026-05-02T00:00:00Z','2026-05-02T00:00:00Z')`).run();
+    const res = await request(app).post('/api/tallas').send([{ id: 'TAL-3', talla: 'XXL', confidence: 0.9 }]);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ updated: 0 });
+  });
+
+  it('body vacío devuelve updated 0', async () => {
+    const res = await request(app).post('/api/tallas').send([]);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ updated: 0 });
+  });
+
+  it('body no-array devuelve 400', async () => {
+    const res = await request(app).post('/api/tallas').send({ nope: true });
+    expect(res.status).toBe(400);
+  });
+});
