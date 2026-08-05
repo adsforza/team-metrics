@@ -9,7 +9,10 @@ export function timeAgo(iso: string, now: number = Date.now()): string {
 }
 
 export function syncStatusText(
-  status: SyncStatus, lastSyncedAt: string | null, now: number = Date.now(),
+  status: SyncStatus,
+  lastSyncedAt: string | null,
+  mode?: 'backend' | 'direct' | null,
+  now: number = Date.now(),
 ): string {
   if (status === 'offline') {
     return lastSyncedAt
@@ -17,6 +20,17 @@ export function syncStatusText(
       : '⚠ Sin conexión · sin datos aún';
   }
   if (!lastSyncedAt) return '';
-  if (status === 'partial') return `sync parcial · ${timeAgo(lastSyncedAt, now)}`;
-  return `sync ${timeAgo(lastSyncedAt, now)}`;
+
+  let text: string;
+  if (status === 'partial') {
+    text = `sync parcial · ${timeAgo(lastSyncedAt, now)}`;
+  } else {
+    text = `sync ${timeAgo(lastSyncedAt, now)}`;
+  }
+
+  if (mode === 'direct') {
+    text += ' · directo';
+  }
+
+  return text;
 }
