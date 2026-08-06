@@ -65,7 +65,8 @@ async function initSchema(db: SQLite.SQLiteDatabase): Promise<void> {
     CREATE TABLE IF NOT EXISTS issues (
       id TEXT PRIMARY KEY, title TEXT, description TEXT, status TEXT,
       assignee_id TEXT, talla TEXT, talla_confidence REAL,
-      created_at TEXT, updated_at TEXT, last_transition_at TEXT
+      created_at TEXT, updated_at TEXT, last_transition_at TEXT,
+      talla_pushed INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS transitions (
       id INTEGER PRIMARY KEY AUTOINCREMENT, issue_id TEXT,
@@ -78,6 +79,11 @@ async function initSchema(db: SQLite.SQLiteDatabase): Promise<void> {
       board_id INTEGER PRIMARY KEY, last_synced_at TEXT
     );
   `);
+
+  const issueCols = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(issues)`);
+  if (!issueCols.some(c => c.name === 'talla_pushed')) {
+    await db.execAsync(`ALTER TABLE issues ADD COLUMN talla_pushed INTEGER NOT NULL DEFAULT 0`);
+  }
 }
 
 // ── Readers ──────────────────────────────────────────────────────────────────
@@ -257,10 +263,24 @@ export async function updateIssueTallas(
   await db.withTransactionAsync(async () => {
     for (const [id, r] of results) {
       if (r.talla) {
-        await db.runAsync('UPDATE issues SET talla=?, talla_confidence=? WHERE id=?', [r.talla, r.confidence, id]);
+        await db.runAsync('UPDATE issues SET talla=?, talla_confidence=?, talla_pushed=0 WHERE id=?', [r.talla, r.confidence, id]);
       }
     }
   });
+}
+
+export async function readPendingTallaPush(
+  db: SQLite.SQLiteDatabase,
+): Promise<{ id: string; talla: string; confidence: number }[]> {
+  return db.getAllAsync<{ id: string; talla: string; confidence: number }>(
+    'SELECT id, talla, talla_confidence AS confidence FROM issues WHERE talla IS NOT NULL AND talla_pushed = 0',
+  );
+}
+
+export async function markTallasPushed(db: SQLite.SQLiteDatabase, ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const placeholders = ids.map(() => '?').join(',');
+  await db.runAsync(`UPDATE issues SET talla_pushed = 1 WHERE id IN (${placeholders})`, ids);
 }
 
 export async function getBoardLastSync(db: SQLite.SQLiteDatabase, boardId: number): Promise<string | undefined> {
