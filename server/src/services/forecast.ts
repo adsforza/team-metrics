@@ -33,7 +33,7 @@ export function dailyThroughput(db: Database.Database, lookbackDays = LOOKBACK_D
   return buckets;
 }
 
-export interface ForecastOpts { items?: unknown; horizon?: unknown; rng?: () => number; asOf?: Date }
+export interface ForecastOpts { items?: unknown; horizon?: unknown; rng?: () => number; asOf?: Date; assignee?: string | null }
 
 export function getForecast(db: Database.Database, opts: ForecastOpts = {}): ForecastResult {
   const issues = db.prepare(`
@@ -44,6 +44,6 @@ export function getForecast(db: Database.Database, opts: ForecastOpts = {}): For
   `).all() as CoreTransition[];
 
   return computeForecast(issues, transitions, {
-    items: opts.items, horizon: opts.horizon, rng: opts.rng, now: opts.asOf,
+    items: opts.items, horizon: opts.horizon, rng: opts.rng, now: opts.asOf, assignee: opts.assignee,
   });
 }

@@ -6,7 +6,7 @@ import { computeWipRisk } from '../../../shared/core/wipRisk';
 import type { CoreIssueWithTitle, CoreTransition } from '../../../shared/core/types';
 import type { WipRiskResult } from '../types';
 
-export function getWipRisk(db: Database.Database, opts: { now?: Date } = {}): WipRiskResult {
+export function getWipRisk(db: Database.Database, opts: { now?: Date; assignee?: string | null } = {}): WipRiskResult {
   const issues = db.prepare(`
     SELECT id, title, status, assignee_id, talla, created_at, last_transition_at FROM issues
   `).all() as CoreIssueWithTitle[];

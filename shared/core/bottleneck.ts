@@ -136,12 +136,18 @@ function assignScores(combined: number[]): BottleneckScore[] {
 }
 
 export function computeBottleneck(
-  issues: CoreIssueWithTitle[],
-  transitions: CoreTransition[],
-  opts: { now?: Date } = {},
+  allIssues: CoreIssueWithTitle[],
+  allTransitions: CoreTransition[],
+  opts: { now?: Date; assignee?: string | null } = {},
 ): BottleneckResult {
   const now = opts.now ?? new Date();
   const nowMs = now.getTime();
+  // Filtro por persona (parity: sin assignee => sin filtro, comportamiento idéntico).
+  const ids = opts.assignee
+    ? new Set(allIssues.filter(i => i.assignee_id === opts.assignee).map(i => i.id))
+    : null;
+  const issues = ids ? allIssues.filter(i => ids.has(i.id)) : allIssues;
+  const transitions = ids ? allTransitions.filter(t => ids.has(t.issue_id)) : allTransitions;
   const from = new Date(nowMs - LOOKBACK_DAYS * MS_PER_DAY).toISOString();
 
   const currentIssues = computeCurrentIssues(issues, transitions);

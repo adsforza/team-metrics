@@ -114,15 +114,21 @@ function dayConf(sorted: number[], p: number, now: Date): ForecastConfidenceDate
   return { days, date };
 }
 
-export interface ForecastOpts { items?: unknown; horizon?: unknown; rng?: () => number; now?: Date }
+export interface ForecastOpts { items?: unknown; horizon?: unknown; rng?: () => number; now?: Date; assignee?: string | null }
 
 export function computeForecast(
-  issues: CoreIssue[],
-  transitions: CoreTransition[],
+  allIssues: CoreIssue[],
+  allTransitions: CoreTransition[],
   opts: ForecastOpts = {},
 ): ForecastResult {
   const rng = opts.rng ?? Math.random;
   const now = opts.now ?? new Date();
+  // Filtro por persona (parity: sin assignee => sin filtro, comportamiento idéntico).
+  const ids = opts.assignee
+    ? new Set(allIssues.filter(i => i.assignee_id === opts.assignee).map(i => i.id))
+    : null;
+  const issues = ids ? allIssues.filter(i => ids.has(i.id)) : allIssues;
+  const transitions = ids ? allTransitions.filter(t => ids.has(t.issue_id)) : allTransitions;
   const daily = dailyThroughput(transitions, LOOKBACK_DAYS, now);
   const totalThroughput = daily.reduce((a, b) => a + b, 0);
   const items = resolveItems(opts.items, currentWip(issues));

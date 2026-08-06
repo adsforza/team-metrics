@@ -116,3 +116,36 @@ describe('computeWipRisk', () => {
     expect(it_.age_days).toBeGreaterThan(0);
   });
 });
+
+describe('computeWipRisk — filtro por assignee', () => {
+  const NOW2 = new Date('2026-06-26T12:00:00Z');
+  function scenario(): { issues: CoreIssueWithTitle[]; transitions: CoreTransition[] } {
+    const issues: CoreIssueWithTitle[] = [];
+    const transitions: CoreTransition[] = [];
+    // 5 L completadas de 10 días → límite_L = 10 (baseline del equipo, assignee null)
+    for (let i = 0; i < 5; i++) {
+      const start = `2026-06-1${i}T00:00:00Z`;
+      const done = new Date(new Date(start).getTime() + 10 * 86400000).toISOString();
+      issues.push({ id: `Lc-${i}`, title: `Lc ${i}`, status: 'Done', assignee_id: null, talla: 'L' as Talla, created_at: '2026-01-01T00:00:00Z', last_transition_at: done });
+      transitions.push({ issue_id: `Lc-${i}`, from_status: 'To Do', to_status: 'In Progress', transitioned_at: start });
+      transitions.push({ issue_id: `Lc-${i}`, from_status: 'In Progress', to_status: 'Done', transitioned_at: done });
+    }
+    // 2 activas L excedidas (12 días), u1 y u2
+    for (const u of ['u1', 'u2']) {
+      issues.push({ id: `WIP-${u}`, title: `WIP ${u}`, status: 'In Progress', assignee_id: u, talla: 'L' as Talla, created_at: '2026-06-01T00:00:00Z', last_transition_at: '2026-06-14T12:00:00Z' });
+      transitions.push({ issue_id: `WIP-${u}`, from_status: 'To Do', to_status: 'In Progress', transitioned_at: '2026-06-14T12:00:00Z' });
+    }
+    return { issues, transitions };
+  }
+
+  it('límites globales, items sólo de la persona filtrada', () => {
+    const { issues, transitions } = scenario();
+    const all = computeWipRisk(issues, transitions, { now: NOW2 });
+    const u1 = computeWipRisk(issues, transitions, { now: NOW2, assignee: 'u1' });
+    expect(all.items.length).toBe(2);
+    expect(u1.items.length).toBe(1);
+    expect(u1.items.every(i => i.assignee_id === 'u1')).toBe(true);
+    // el límite L existe aunque la persona no tenga completadas propias (baseline global)
+    expect(u1.limits.find(l => l.talla === 'L')!.limit_days).toBeCloseTo(10, 5);
+  });
+});

@@ -72,10 +72,13 @@ function activeIssues(issues: CoreIssueWithTitle[], transitions: CoreTransition[
 export function computeWipRisk(
   issues: CoreIssueWithTitle[],
   transitions: CoreTransition[],
-  opts: { now?: Date } = {},
+  opts: { now?: Date; assignee?: string | null } = {},
 ): WipRiskResult {
   const now = opts.now ?? new Date();
   const nowMs = now.getTime();
+  // Los límites por talla se calculan con TODO el equipo (baseline). El filtro por persona
+  // se aplica sólo a los items en riesgo (abajo), para no distorsionar el límite.
+  // Parity: sin assignee no se saltea nada → comportamiento idéntico.
   const limits = tallaLimits(issues, transitions, now);
   const limitByTalla = new Map(limits.map(l => [l.talla, l.limit_days]));
 
@@ -83,6 +86,7 @@ export function computeWipRisk(
   let sin_limite = 0;
 
   for (const r of activeIssues(issues, transitions)) {
+    if (opts.assignee && r.assignee_id !== opts.assignee) continue;
     const limit = r.talla ? limitByTalla.get(r.talla) ?? null : null;
     if (!r.talla || limit === null) { sin_limite++; continue; }
     const age_days = (nowMs - new Date(r.start_at).getTime()) / MS_PER_DAY;

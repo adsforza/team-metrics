@@ -141,3 +141,19 @@ describe('computeBottleneck', () => {
     expect(td.detail.pct_of_wip).toBeCloseTo(1 / 3, 5);
   });
 });
+
+describe('computeBottleneck — filtro por assignee', () => {
+  it('sólo considera issues de la persona filtrada', () => {
+    const now = new Date('2026-06-27T12:00:00Z');
+    const issues: CoreIssueWithTitle[] = [
+      { id: 'A', title: 'A', status: 'In Progress', assignee_id: 'u1', talla: 'M' as Talla, created_at: '2026-01-01T00:00:00Z', last_transition_at: '2026-06-20T00:00:00Z' },
+      { id: 'B', title: 'B', status: 'In Progress', assignee_id: 'u2', talla: 'M' as Talla, created_at: '2026-01-01T00:00:00Z', last_transition_at: '2026-06-20T00:00:00Z' },
+    ];
+    const transitions: CoreTransition[] = [
+      { issue_id: 'A', from_status: 'To Do', to_status: 'In Progress', transitioned_at: '2026-06-20T00:00:00Z' },
+      { issue_id: 'B', from_status: 'To Do', to_status: 'In Progress', transitioned_at: '2026-06-20T00:00:00Z' },
+    ];
+    expect(computeBottleneck(issues, transitions, { now }).total_active).toBe(2);
+    expect(computeBottleneck(issues, transitions, { now, assignee: 'u1' }).total_active).toBe(1);
+  });
+});

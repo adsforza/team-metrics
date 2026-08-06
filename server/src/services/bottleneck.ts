@@ -8,7 +8,7 @@ import type { BottleneckResult } from '../types';
 
 export function getBottleneck(
   db: Database.Database,
-  opts: { now?: Date } = {},
+  opts: { now?: Date; assignee?: string | null } = {},
 ): BottleneckResult {
   const issues = db.prepare(`
     SELECT id, title, status, assignee_id, talla, created_at, last_transition_at FROM issues

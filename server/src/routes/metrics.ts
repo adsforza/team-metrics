@@ -55,22 +55,29 @@ router.get('/aging', (req, res, next) => {
 
 router.get('/forecast', (req, res, next) => {
   try {
-    res.json(getForecast(getDb(), { items: req.query.items, horizon: req.query.horizon }));
+    const assignee = typeof req.query.assignee === 'string' ? req.query.assignee : undefined;
+    res.json(getForecast(getDb(), { items: req.query.items, horizon: req.query.horizon, assignee }));
   } catch (err) {
     next(err);
   }
 });
 
-router.get('/wip-risk', (_req, res, next) => {
+router.get('/wip-risk', (req, res, next) => {
   try {
-    res.json(getWipRisk(getDb()));
+    const assignee = typeof req.query.assignee === 'string' ? req.query.assignee : undefined;
+    res.json(getWipRisk(getDb(), { assignee }));
   } catch (err) {
     next(err);
   }
 });
 
-router.get('/bottleneck', (_req, res, next) => {
-  try { res.json(getBottleneck(getDb())); } catch (err) { next(err); }
+router.get('/bottleneck', (req, res, next) => {
+  try {
+    const assignee = typeof req.query.assignee === 'string' ? req.query.assignee : undefined;
+    res.json(getBottleneck(getDb(), { assignee }));
+  } catch (err) {
+    next(err);
+  }
 });
 
 router.get('/comparison', (req, res, next) => {
