@@ -35,9 +35,13 @@ export default function AjustesScreen() {
 
   const handleSync = async () => {
     await sync();
-    const currentErrors = useSyncStore.getState().errors;
-    if (currentErrors.length > 0) {
-      Alert.alert('Sync parcial', `${currentErrors.length} endpoint(s) fallaron:\n${currentErrors.map(e => `${e.endpoint}: ${e.message}`).join('\n\n')}`);
+    const st = useSyncStore.getState();
+    // Sólo alertar cuando el sync REAL (snapshots) fue parcial/offline. Los fallos
+    // best-effort de push de tallas (/api/tallas) o pull de crudo (/api/raw) también
+    // caen en errors[], pero no deben disparar un falso "Sync parcial" si los snapshots
+    // salieron bien (status 'ok').
+    if ((st.lastSyncStatus === 'partial' || st.lastSyncStatus === 'offline') && st.errors.length > 0) {
+      Alert.alert('Sync parcial', `${st.errors.length} endpoint(s) fallaron:\n${st.errors.map(e => `${e.endpoint}: ${e.message}`).join('\n\n')}`);
     }
     // Reload members after sync
     getDb().then(db => readTeamMemberNames(db)).then(setMembers).catch(console.error);
