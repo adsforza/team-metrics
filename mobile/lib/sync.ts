@@ -1,7 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type * as SQLite from 'expo-sqlite';
-import { getBaseUrl, JIRA_BASE_URL_KEY, pushTallas } from './api';
-import { getDb, readPendingTallaPush, markTallasPushed } from './db';
+import { getBaseUrl, JIRA_BASE_URL_KEY, pushTallas, fetchRaw } from './api';
+import {
+  getDb, readPendingTallaPush, markTallasPushed,
+  upsertServerRaw, getBoardLastSync, setBoardLastSync,
+} from './db';
 import type {
   KPIMetrics, ThroughputWeek, TeamScorecardResponse, AgingIssue,
   WipRiskResult, BottleneckResult, ForecastResult, ComparisonResult,
@@ -103,6 +106,16 @@ export async function performSync(dateParams?: { from: string; to: string }, ass
 
   const push = await pushPendingTallas(db);
   if (push.error) errors.push({ endpoint: '/api/tallas', message: push.error });
+
+  // SP-C: mantener el crudo caliente para el próximo direct mode (best-effort).
+  try {
+    const sentinel = await getBoardLastSync(db, 0);
+    const raw = await fetchRaw(sentinel);
+    await upsertServerRaw(db, raw);
+    if (raw.serverSyncedAt) await setBoardLastSync(db, 0, raw.serverSyncedAt);
+  } catch (err) {
+    errors.push({ endpoint: '/api/raw', message: String(err) });
+  }
 
   const allResults = [
     kpi, throughput, team, aging, wipRisk, bottleneck, forecast, cfd, issues, byTalla,

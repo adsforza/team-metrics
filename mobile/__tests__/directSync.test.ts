@@ -1,6 +1,6 @@
 jest.mock('../lib/db', () => ({
   upsertRawIssues: jest.fn().mockResolvedValue(undefined),
-  getBoardLastSync: jest.fn(),
+  getRawSince: jest.fn(),
   setBoardLastSync: jest.fn().mockResolvedValue(undefined),
   readUnclassifiedIssues: jest.fn(),
   updateIssueTallas: jest.fn().mockResolvedValue(undefined),
@@ -15,7 +15,7 @@ jest.mock('../lib/snapshots', () => ({
 
 import { directSync, type DirectSyncConfig } from '../lib/directSync';
 import {
-  upsertRawIssues, getBoardLastSync, setBoardLastSync,
+  upsertRawIssues, getRawSince, setBoardLastSync,
   readUnclassifiedIssues, updateIssueTallas,
   loadCoreIssues, loadCoreTransitions, loadCoreMembers,
 } from '../lib/db';
@@ -55,7 +55,7 @@ function baseConfig(overrides: Partial<DirectSyncConfig> = {}): DirectSyncConfig
 }
 
 function setupDbMocks() {
-  (getBoardLastSync as jest.Mock).mockResolvedValue('2026-06-01T00:00:00Z');
+  (getRawSince as jest.Mock).mockResolvedValue('2026-06-01T00:00:00Z');
   (readUnclassifiedIssues as jest.Mock).mockResolvedValue([{ id: 'A', title: 'Issue A', description: 'desc' }]);
   (loadCoreIssues as jest.Mock).mockResolvedValue(coreIssues);
   (loadCoreTransitions as jest.Mock).mockResolvedValue(coreTransitions);
@@ -68,7 +68,7 @@ beforeEach(() => {
 });
 
 describe('directSync', () => {
-  it('fetches per board using `since` from getBoardLastSync, upserts raw, classifies pending, computes + writes a bundle, and reports success', async () => {
+  it('fetches per board using `since` from getRawSince, upserts raw, classifies pending, computes + writes a bundle, and reports success', async () => {
     const http: JiraHttp = jest.fn().mockResolvedValue({ issues: [jiraApiIssue('A', 'Issue A')], total: 1 });
     const fakeGenerate: GenerateFn = jest.fn().mockResolvedValue('[{"talla":"M","confidence":0.9}]');
     const makeGen = jest.fn().mockReturnValue(fakeGenerate);
@@ -79,8 +79,8 @@ describe('directSync', () => {
     expect(result.errors).toEqual([]);
     expect(result.syncedAt).toBe(NOW.toISOString());
 
-    // fetched with `since` from getBoardLastSync
-    expect(getBoardLastSync).toHaveBeenCalledWith(dbStub, 7);
+    // fetched with `since` from getRawSince
+    expect(getRawSince).toHaveBeenCalledWith(dbStub, 7);
     expect(http).toHaveBeenCalledTimes(1);
     const [req] = (http as jest.Mock).mock.calls[0];
     expect(req.url).toContain('/board/7/issue');

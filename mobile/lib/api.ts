@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { RawBundle } from './db';
 
 export const BASE_URL_KEY = 'base_url';
 export const JIRA_BASE_URL_KEY = 'jira_base_url';
@@ -45,6 +46,14 @@ export async function pushTallas(
   });
   if (!res.ok) throw new Error(`HTTP ${res.status} /api/tallas`);
   return res.json() as Promise<{ updated: number }>;
+}
+
+export async function fetchRaw(since?: string): Promise<RawBundle> {
+  const base = await getBaseUrl();
+  const qs = since ? `?since=${encodeURIComponent(since)}` : '';
+  const res = await fetch(`${base}/api/raw${qs}`, { signal: AbortSignal.timeout(20_000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status} /api/raw`);
+  return res.json() as Promise<RawBundle>;
 }
 
 export async function isServerReachable(): Promise<boolean> {

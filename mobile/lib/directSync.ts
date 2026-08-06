@@ -25,7 +25,7 @@ import { writeSnapshots } from './snapshots';
 import type { Issue } from './types';
 import { getLastNMondays } from './weeks';
 import {
-  upsertRawIssues, getBoardLastSync, setBoardLastSync,
+  upsertRawIssues, getRawSince, setBoardLastSync,
   readUnclassifiedIssues, updateIssueTallas,
   loadCoreIssues, loadCoreTransitions, loadCoreMembers,
 } from './db';
@@ -210,7 +210,7 @@ export async function directSync(
 
   for (const boardCfg of config.boards) {
     try {
-      const since = await getBoardLastSync(db, boardCfg.boardId);
+      const since = await getRawSince(db, boardCfg.boardId);
       const raw = await fetchBoardIssues(boardCfg, http, since);
       await upsertRawIssues(db, raw);
       await setBoardLastSync(db, boardCfg.boardId, syncedAt);
