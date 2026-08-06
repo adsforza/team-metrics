@@ -355,3 +355,10 @@ export async function getRawSince(db: SQLite.SQLiteDatabase, boardId: number): P
   if (!sentinel) return board;
   return board > sentinel ? board : sentinel;
 }
+
+// Borra todos los cursores de sync (por-board + sentinela 0). El próximo sync baja TODO
+// de Jira/server (sin `since`), backfilleando updates que el delta se hubiera saltado
+// (p.ej. issues cambiados durante una caída del sync). Escape hatch ante gaps del delta.
+export async function clearAllBoardSync(db: SQLite.SQLiteDatabase): Promise<void> {
+  await db.runAsync('DELETE FROM board_sync');
+}

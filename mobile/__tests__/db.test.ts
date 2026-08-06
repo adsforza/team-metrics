@@ -10,7 +10,7 @@ jest.mock('expo-sqlite', () => {
 });
 
 import * as SQLite from 'expo-sqlite';
-import { getDb, hasData, readPendingTallaPush, markTallasPushed, updateIssueTallas, upsertServerRaw, getRawSince } from '../lib/db';
+import { getDb, hasData, readPendingTallaPush, markTallasPushed, updateIssueTallas, upsertServerRaw, getRawSince, clearAllBoardSync } from '../lib/db';
 
 describe('getDb', () => {
   test('opens database and runs schema migration', async () => {
@@ -132,5 +132,14 @@ describe('getRawSince', () => {
       .mockResolvedValueOnce({ last_synced_at: '2026-07-01T00:00:00Z' }); // sentinela
     const since = await getRawSince(db, 7);
     expect(since).toBe('2026-07-01T00:00:00Z');
+  });
+});
+
+describe('clearAllBoardSync', () => {
+  test('borra todos los cursores de sync', async () => {
+    const db = await getDb();
+    (db.runAsync as jest.Mock).mockClear();
+    await clearAllBoardSync(db);
+    expect(db.runAsync).toHaveBeenCalledWith('DELETE FROM board_sync');
   });
 });

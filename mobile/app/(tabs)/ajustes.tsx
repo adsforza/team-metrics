@@ -6,7 +6,7 @@ import { Colors, Card, Typography } from '../../lib/theme';
 import { BASE_URL_KEY, DEFAULT_BASE_URL, setBaseUrl } from '../../lib/api';
 import { useSyncStore } from '../../store/syncStore';
 import { useFilterStore } from '../../store/filterStore';
-import { getDb, readTeamMemberNames } from '../../lib/db';
+import { getDb, readTeamMemberNames, clearAllBoardSync } from '../../lib/db';
 import { getDirectConfigFields, setDirectConfigFields, getDirectConfig, type DirectConfigFields } from '../../lib/directConfig';
 import { jiraHttpFetch } from '../../lib/transports';
 
@@ -72,6 +72,24 @@ export default function AjustesScreen() {
       const msg = err instanceof Error ? err.message : String(err);
       Alert.alert('Jira falló ❌', `${msg}${meta}`);
     }
+  };
+
+  const handleFullResync = async () => {
+    Alert.alert(
+      'Resync completo',
+      'Baja TODO de nuevo (más lento). Úsalo si ves estados desactualizados que un sync normal no corrige.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Bajar todo',
+          onPress: async () => {
+            const db = await getDb();
+            await clearAllBoardSync(db);
+            await handleSync();
+          },
+        },
+      ],
+    );
   };
 
   const handleReclassify = async () => {
@@ -249,6 +267,17 @@ export default function AjustesScreen() {
         </TouchableOpacity>
         <Text style={s.hint}>
           Clasifica los issues sin talla. Con el server disponible lo hace el backend; si no, directo con Gemini (limitado por cuota).
+        </Text>
+        <TouchableOpacity
+          style={[s.reclassifyButton, { marginTop: 12 }]}
+          onPress={handleFullResync}
+          disabled={loading}
+        >
+          <Feather name="download-cloud" size={13} color={Colors.primary} />
+          <Text style={s.reclassifyButtonText}>Resync completo</Text>
+        </TouchableOpacity>
+        <Text style={s.hint}>
+          Baja todo de nuevo (más lento). Úsalo si un issue muestra un estado viejo que el sync normal no corrige.
         </Text>
         {loading && progress && (
           <View style={{ marginTop: 10 }}>
