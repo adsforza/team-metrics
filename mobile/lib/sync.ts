@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getBaseUrl, JIRA_BASE_URL_KEY } from './api';
-import { getDb } from './db';
+import type * as SQLite from 'expo-sqlite';
+import { getBaseUrl, JIRA_BASE_URL_KEY, pushTallas } from './api';
+import { getDb, readPendingTallaPush, markTallasPushed } from './db';
 import type {
   KPIMetrics, ThroughputWeek, TeamScorecardResponse, AgingIssue,
   WipRiskResult, BottleneckResult, ForecastResult, ComparisonResult,
@@ -19,6 +20,20 @@ async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
+}
+
+export async function pushPendingTallas(
+  db: SQLite.SQLiteDatabase,
+): Promise<{ pushed: number; error?: string }> {
+  try {
+    const pending = await readPendingTallaPush(db);
+    if (pending.length === 0) return { pushed: 0 };
+    await pushTallas(pending);
+    await markTallasPushed(db, pending.map(p => p.id));
+    return { pushed: pending.length };
+  } catch (err) {
+    return { pushed: 0, error: String(err) };
+  }
 }
 
 export async function performSync(dateParams?: { from: string; to: string }, assignee?: string | null): Promise<SyncResult> {
@@ -85,6 +100,9 @@ export async function performSync(dateParams?: { from: string; to: string }, ass
     comparisons: comparisons.flatMap(c => c.status === 'fulfilled' ? [{ week: c.value.week, result: c.value }] : []),
   };
   await writeSnapshots(db, bundle, syncedAt);
+
+  const push = await pushPendingTallas(db);
+  if (push.error) errors.push({ endpoint: '/api/tallas', message: push.error });
 
   const allResults = [
     kpi, throughput, team, aging, wipRisk, bottleneck, forecast, cfd, issues, byTalla,

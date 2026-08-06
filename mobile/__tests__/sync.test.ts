@@ -17,7 +17,8 @@ jest.mock('expo-sqlite', () => {
 global.fetch = jest.fn();
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { performSync, LAST_SYNCED_KEY } from '../lib/sync';
+import { performSync, LAST_SYNCED_KEY, pushPendingTallas } from '../lib/sync';
+import { getDb } from '../lib/db';
 
 const mockKpi = { wip: 5, throughput: 3, cycle_time_p50: 4, cycle_time_p85: 7, blocked_count: 1 };
 
@@ -71,5 +72,39 @@ describe('performSync', () => {
     const result = await performSync();
     expect(result.okCount).toBeGreaterThan(0);
     expect(AsyncStorage.setItem).toHaveBeenCalledWith(LAST_SYNCED_KEY, result.syncedAt);
+  });
+});
+
+describe('pushPendingTallas', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test('empuja pendientes y las marca', async () => {
+    const db = await getDb();
+    (db.getAllAsync as jest.Mock).mockResolvedValueOnce([{ id: 'X', talla: 'M', confidence: 0.9 }]);
+    (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ updated: 1 }) });
+    const res = await pushPendingTallas(db);
+    expect(res).toEqual({ pushed: 1 });
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/api/tallas'),
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(db.runAsync).toHaveBeenCalledWith(expect.stringContaining('talla_pushed = 1'), ['X']);
+  });
+
+  test('no-op cuando no hay pendientes', async () => {
+    const db = await getDb();
+    (db.getAllAsync as jest.Mock).mockResolvedValueOnce([]);
+    const res = await pushPendingTallas(db);
+    expect(res).toEqual({ pushed: 0 });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test('devuelve error string si el POST falla', async () => {
+    const db = await getDb();
+    (db.getAllAsync as jest.Mock).mockResolvedValueOnce([{ id: 'X', talla: 'M', confidence: 0.9 }]);
+    (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false, status: 500 });
+    const res = await pushPendingTallas(db);
+    expect(res.pushed).toBe(0);
+    expect(res.error).toContain('500');
   });
 });

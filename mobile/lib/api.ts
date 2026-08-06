@@ -33,6 +33,20 @@ export async function triggerReclassify(): Promise<{ status: string; pending: nu
   return res.json() as Promise<{ status: string; pending: number }>;
 }
 
+export async function pushTallas(
+  tallas: { id: string; talla: string; confidence: number }[],
+): Promise<{ updated: number }> {
+  const base = await getBaseUrl();
+  const res = await fetch(`${base}/api/tallas`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(tallas),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status} /api/tallas`);
+  return res.json() as Promise<{ updated: number }>;
+}
+
 export async function isServerReachable(): Promise<boolean> {
   const base = await getBaseUrl();
   try {
