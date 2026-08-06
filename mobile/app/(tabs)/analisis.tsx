@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { ScrollView, View, Text, StyleSheet } from 'react-native';
 import { Colors, Card, Typography } from '../../lib/theme';
 import { BottleneckRow } from '../../components/BottleneckRow';
 import { ForecastCard } from '../../components/ForecastCard';
 import { EmptyState } from '../../components/EmptyState';
 import { useAnalysis } from '../../hooks/useAnalysis';
+import { useFilterStore, dateRangeFor } from '../../store/filterStore';
 import type { CFDPoint, Issue } from '../../lib/types';
 
 // ── CFD ──────────────────────────────────────────────────────────────────────
@@ -40,12 +42,11 @@ function CfdChart({ data }: { data: CFDPoint[] }) {
 
   return (
     <View style={Card.base}>
-      {/* Stacked bar chart */}
+      {/* Stacked bar chart — todas las barras comparten el mismo baseline (alto fijo BAR_H) */}
       <View style={cf.chartRow}>
-        {sample.map((p, i) => {
+        {sample.map((p) => {
           const total = WIP_KEYS.reduce((s, k) => s + (p[k] as number), 0);
           const barH = Math.max((total / maxWip) * BAR_H, total > 0 ? 2 : 0);
-          const showLabel = i === 0 || i === Math.floor(sample.length / 2) || i === sample.length - 1;
           return (
             <View key={p.date} style={cf.col}>
               <View style={[cf.barWrap, { height: BAR_H }]}>
@@ -58,6 +59,17 @@ function CfdChart({ data }: { data: CFDPoint[] }) {
                   })}
                 </View>
               </View>
+            </View>
+          );
+        })}
+      </View>
+      {/* Fechas en fila aparte: no empujan las barras, así el baseline queda parejo y se
+          ve si el WIP se acumula. */}
+      <View style={cf.labelsRow}>
+        {sample.map((p, i) => {
+          const showLabel = i === 0 || i === Math.floor(sample.length / 2) || i === sample.length - 1;
+          return (
+            <View key={p.date} style={cf.col}>
               {showLabel && <Text style={cf.dateLabel}>{fmtDate(p.date)}</Text>}
             </View>
           );
@@ -88,7 +100,8 @@ function CfdChart({ data }: { data: CFDPoint[] }) {
 }
 
 const cf = StyleSheet.create({
-  chartRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 3, marginBottom: 8 },
+  chartRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
+  labelsRow: { flexDirection: 'row', gap: 3, marginBottom: 8, marginTop: 3 },
   col: { flex: 1, alignItems: 'center' },
   barWrap: { justifyContent: 'flex-end', width: '100%', alignItems: 'center' },
   stack: { width: '80%', overflow: 'hidden', borderRadius: 2, justifyContent: 'flex-end' },
@@ -105,65 +118,88 @@ const cf = StyleSheet.create({
 
 // ── Scatter ───────────────────────────────────────────────────────────────────
 
-function CycleTimeScatter({ issues }: { issues: Issue[] }) {
+// Scatter vertical (rotado 90° para aprovechar el alto del teléfono):
+//   eje Y = tiempo (el PERÍODO medido por el filtro, viejo arriba → nuevo abajo)
+//   eje X = cycle time en días (0 izq → max der), con líneas p50/p85 verticales.
+function CycleTimeScatter({ issues, range }: { issues: Issue[]; range: { from: string; to: string } }) {
+  const [plotW, setPlotW] = useState(0);
+
   const pts = issues
     .filter(i => i.ct_days != null && i.last_transition_at)
     .map(i => ({ ts: new Date(i.last_transition_at!).getTime(), days: i.ct_days! }));
 
   if (pts.length === 0) return null;
 
-  const W = 280, H = 120;
-  const minTs = Math.min(...pts.map(p => p.ts));
-  const maxTs = Math.max(...pts.map(p => p.ts));
+  const H = 300;
   const maxDays = Math.max(...pts.map(p => p.days), 1);
-  const spanTs = Math.max(maxTs - minTs, 1);
 
-  const p50Sorted = [...pts].sort((a, b) => a.days - b.days);
-  const p50 = p50Sorted[Math.floor(p50Sorted.length * 0.5)]?.days ?? 0;
-  const p85 = p50Sorted[Math.floor(p50Sorted.length * 0.85)]?.days ?? 0;
+  // Eje de tiempo = el período medido (filtro), no el min/max de los puntos.
+  const ps = Date.parse(range.from + 'T00:00:00Z');
+  const pe = Date.parse(range.to + 'T23:59:59Z');
+  const start = Number.isNaN(ps) ? Math.min(...pts.map(p => p.ts)) : ps;
+  const end = Number.isNaN(pe) ? Math.max(...pts.map(p => p.ts)) : pe;
+  const span = Math.max(end - start, 1);
 
-  function fmtTs(ms: number) {
-    const d = new Date(ms);
-    return d.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
-  }
+  const sorted = [...pts].sort((a, b) => a.days - b.days);
+  const p50 = sorted[Math.floor(sorted.length * 0.5)]?.days ?? 0;
+  const p85 = sorted[Math.floor(sorted.length * 0.85)]?.days ?? 0;
+
+  const fmtTs = (ms: number) => new Date(ms).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
+  const topFor = (ts: number) => Math.min(Math.max(((ts - start) / span) * (H - 6), 0), H - 6);
 
   return (
     <View style={Card.base}>
-      <View style={{ height: H, position: 'relative', marginBottom: 20 }}>
-        {/* P85 line */}
-        <View style={[sc.refLine, { bottom: (p85 / maxDays) * H, borderColor: Colors.warning + '60' }]} />
-        {/* P50 line */}
-        <View style={[sc.refLine, { bottom: (p50 / maxDays) * H, borderColor: Colors.primary + '60' }]} />
-        {/* Dots */}
-        {pts.map((p, i) => (
-          <View
-            key={i}
-            style={[sc.dot, {
-              left: ((p.ts - minTs) / spanTs) * (W - 8),
-              bottom: Math.min((p.days / maxDays) * H, H - 4),
-              backgroundColor: p.days > p85 ? Colors.error : p.days > p50 ? Colors.warning : Colors.success,
-            }]}
-          />
-        ))}
-        {/* Y labels */}
-        <Text style={[sc.yLabel, { bottom: (p85 / maxDays) * H }]}>p85 {p85.toFixed(1)}d</Text>
-        <Text style={[sc.yLabel, { bottom: (p50 / maxDays) * H }]}>p50 {p50.toFixed(1)}d</Text>
+      <View style={{ flexDirection: 'row' }}>
+        {/* Eje de tiempo (vertical): el período medido */}
+        <View style={{ width: 46, height: H }}>
+          <Text style={[sc.tLabel, { top: 0 }]}>{fmtTs(start)}</Text>
+          <Text style={[sc.tLabel, { top: H / 2 - 6 }]}>{fmtTs((start + end) / 2)}</Text>
+          <Text style={[sc.tLabel, { top: H - 12 }]}>{fmtTs(end)}</Text>
+        </View>
+        {/* Plot */}
+        <View
+          style={{ flex: 1, height: H, position: 'relative' }}
+          onLayout={e => setPlotW(e.nativeEvent.layout.width)}
+        >
+          {plotW > 0 && (
+            <>
+              {/* Líneas p50 / p85 (verticales) */}
+              <View style={[sc.vLine, { left: (p50 / maxDays) * plotW, borderColor: Colors.primary + '60' }]} />
+              <View style={[sc.vLine, { left: (p85 / maxDays) * plotW, borderColor: Colors.warning + '60' }]} />
+              {/* Puntos */}
+              {pts.map((p, i) => (
+                <View
+                  key={i}
+                  style={[sc.dot, {
+                    left: Math.min((p.days / maxDays) * plotW, plotW - 6),
+                    top: topFor(p.ts),
+                    backgroundColor: p.days > p85 ? Colors.error : p.days > p50 ? Colors.warning : Colors.success,
+                  }]}
+                />
+              ))}
+              {/* Etiquetas p50/p85 arriba de sus líneas */}
+              <Text style={[sc.vLabel, { left: (p50 / maxDays) * plotW }]}>p50 {p50.toFixed(1)}d</Text>
+              <Text style={[sc.vLabel, { left: (p85 / maxDays) * plotW }]}>p85 {p85.toFixed(1)}d</Text>
+            </>
+          )}
+        </View>
       </View>
-      {/* X axis labels */}
+      {/* Eje de cycle time (horizontal, días) */}
       <View style={sc.xRow}>
-        <Text style={sc.xLabel}>{fmtTs(minTs)}</Text>
-        <Text style={sc.xLabel}>{fmtTs((minTs + maxTs) / 2)}</Text>
-        <Text style={sc.xLabel}>{fmtTs(maxTs)}</Text>
+        <Text style={sc.xLabel}>0d</Text>
+        <Text style={sc.xLabel}>{(maxDays / 2).toFixed(0)}d</Text>
+        <Text style={sc.xLabel}>{maxDays.toFixed(0)}d</Text>
       </View>
     </View>
   );
 }
 
 const sc = StyleSheet.create({
-  refLine: { position: 'absolute', left: 0, right: 0, height: 1, borderTopWidth: 1, borderStyle: 'dashed' },
-  dot: { position: 'absolute', width: 6, height: 6, borderRadius: 3, opacity: 0.8 },
-  yLabel: { position: 'absolute', right: 0, fontSize: 9, color: Colors.textMuted },
-  xRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  vLine: { position: 'absolute', top: 0, bottom: 0, width: 1, borderLeftWidth: 1, borderStyle: 'dashed' },
+  dot: { position: 'absolute', width: 6, height: 6, borderRadius: 3, opacity: 0.85 },
+  tLabel: { position: 'absolute', right: 4, fontSize: 9, color: Colors.textSubtle },
+  vLabel: { position: 'absolute', top: 0, fontSize: 9, color: Colors.textMuted },
+  xRow: { flexDirection: 'row', justifyContent: 'space-between', marginLeft: 46, marginTop: 4 },
   xLabel: { fontSize: 9, color: Colors.textSubtle },
 });
 
@@ -171,6 +207,8 @@ const sc = StyleSheet.create({
 
 export default function AnalisisScreen() {
   const { bottleneck, forecast, cfd, issues, hasData } = useAnalysis();
+  const timeRange = useFilterStore(s => s.timeRange);
+  const range = dateRangeFor(timeRange);
 
   if (!hasData) return <EmptyState />;
 
@@ -205,7 +243,7 @@ export default function AnalisisScreen() {
       {issues.length > 0 && (
         <>
           <Text style={[Typography.label, s.sectionLabel]}>Cycle Time</Text>
-          <CycleTimeScatter issues={issues} />
+          <CycleTimeScatter issues={issues} range={range} />
         </>
       )}
 
