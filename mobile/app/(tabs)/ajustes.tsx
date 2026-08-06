@@ -16,7 +16,7 @@ export default function AjustesScreen() {
   const [url, setUrl] = useState(DEFAULT_BASE_URL);
   const [dc, setDc] = useState<Partial<DirectConfigFields>>({});
   const [showSecrets, setShowSecrets] = useState(false);
-  const { sync, reclassify, loading, lastSyncedAt } = useSyncStore();
+  const { sync, reclassify, loading, lastSyncedAt, progress } = useSyncStore();
   const { assignee, talla, setAssignee, setTalla } = useFilterStore();
 
   const handleSetAssignee = (id: string | null) => {
@@ -246,6 +246,16 @@ export default function AjustesScreen() {
         <Text style={s.hint}>
           Clasifica los issues sin talla. Con el server disponible lo hace el backend; si no, directo con Gemini (limitado por cuota).
         </Text>
+        {loading && progress && (
+          <View style={{ marginTop: 10 }}>
+            <Text style={s.hint}>{progress.label}</Text>
+            {progress.total ? (
+              <View style={s.progressTrack}>
+                <View style={[s.progressFill, { width: `${Math.round((progress.current ?? 0) / progress.total * 100)}%` }]} />
+              </View>
+            ) : null}
+          </View>
+        )}
       </View>
 
       {/* Filtros globales */}
@@ -319,6 +329,8 @@ const s = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 9,
   },
   reclassifyButtonText: { color: Colors.primary, fontSize: 13, fontWeight: '600' },
+  progressTrack: { height: 4, backgroundColor: Colors.border, borderRadius: 2, marginTop: 6, overflow: 'hidden' },
+  progressFill: { height: 4, backgroundColor: Colors.primary, borderRadius: 2 },
   labelRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     marginBottom: 6, marginTop: 12,

@@ -5,8 +5,8 @@ import { useSyncStore } from '../store/syncStore';
 import { syncStatusText } from '../lib/syncStatus';
 
 export function SyncHeader() {
-  const { sync, loading, lastSyncedAt, lastSyncStatus, lastSyncMode } = useSyncStore();
-  const label = syncStatusText(lastSyncStatus, lastSyncedAt, lastSyncMode);
+  const { sync, loading, lastSyncedAt, lastSyncStatus, lastSyncMode, progress } = useSyncStore();
+  const label = loading && progress ? progress.label : syncStatusText(lastSyncStatus, lastSyncedAt, lastSyncMode);
   const offline = lastSyncStatus === 'offline';
   return (
     <View style={s.row}>
