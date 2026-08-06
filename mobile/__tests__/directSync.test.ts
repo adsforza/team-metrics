@@ -116,6 +116,25 @@ describe('directSync', () => {
     expect(result.failCount).toBe(0);
   });
 
+  it('corta la clasificación tras un lote sin resultados (cuota Gemini agotada) y no cuelga el sync', async () => {
+    // 40 pendientes => 2 lotes de 20
+    (readUnclassifiedIssues as jest.Mock).mockResolvedValue(
+      Array.from({ length: 40 }, (_, i) => ({ id: `I${i}`, title: 't', description: 'd' })),
+    );
+    const http: JiraHttp = jest.fn().mockResolvedValue({ issues: [], total: 0 });
+    // 'not-json' => parseBatchResponse cae en fallbackMap (todos confidence 0)
+    const fakeGenerate: GenerateFn = jest.fn().mockResolvedValue('not-json');
+    const makeGen = jest.fn().mockReturnValue(fakeGenerate);
+
+    const result = await directSync(dbStub, baseConfig(), { http, makeGen, now: NOW });
+
+    // cortó tras el primer lote fallback: sólo 1 llamada a generate (no 2)
+    expect(fakeGenerate).toHaveBeenCalledTimes(1);
+    // el sync igual completa: recomputa y escribe snapshots
+    expect(writeSnapshots).toHaveBeenCalledTimes(1);
+    expect(result.errors.some(e => e.endpoint.startsWith('classify:batch'))).toBe(true);
+  });
+
   it('keeps going and reports the error when a board fetch fails, still classifying + computing + writing', async () => {
     const http: JiraHttp = jest.fn().mockRejectedValue(new Error('boom'));
     const fakeGenerate: GenerateFn = jest.fn().mockResolvedValue('[{"talla":"M","confidence":0.9}]');
@@ -156,7 +175,9 @@ describe('directSync', () => {
     const pending = Array.from({ length: 25 }, (_, i) => ({ id: `I${i}`, title: `T${i}`, description: '' }));
     (readUnclassifiedIssues as jest.Mock).mockResolvedValue(pending);
     const http: JiraHttp = jest.fn().mockResolvedValue({ issues: [], total: 0 });
-    const fakeGenerate: GenerateFn = jest.fn().mockResolvedValue('[]');
+    // Respuesta que clasifica al menos un issue (confidence > 0) para que el lote NO
+    // dispare el corte por "sin clasificaciones" y se procesen ambos lotes.
+    const fakeGenerate: GenerateFn = jest.fn().mockResolvedValue('[{"talla":"M","confidence":0.9}]');
     const makeGen = jest.fn().mockReturnValue(fakeGenerate);
 
     await directSync(dbStub, baseConfig(), { http, makeGen, now: NOW });

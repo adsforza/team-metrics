@@ -150,8 +150,14 @@ function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-// Clasifica todos los issues sin talla en lotes. Best-effort: cada lote que falla
-// (típicamente cuota de Gemini) se registra pero no aborta el resto.
+// En mobile clasificamos con retries=0: un 429 sin retryDelay hace que
+// classifyTallaBatch espere backoff exponencial (2→4→…→64 min por lote), lo que
+// cuelga el sync entero. Preferimos fallar rápido y reintentar en el próximo sync.
+const CLASSIFY_RETRIES = 0;
+
+// Clasifica todos los issues sin talla en lotes. Best-effort. Si un lote no clasifica
+// NADA (todos confidence 0 = fallback por cuota/error), asumimos cuota agotada y CORTAMOS
+// el resto: seguir sólo quemaría tiempo/tokens. Lo pendiente se reintenta el próximo sync.
 async function classifyAllPending(
   db: SQLite.SQLiteDatabase,
   geminiKey: string,
@@ -168,13 +174,20 @@ async function classifyAllPending(
     for (let i = 0; i < batches.length; i++) {
       onProgress?.({ label: `Clasificando lote ${i + 1}/${batches.length}`, current: i + 1, total: batches.length });
       try {
-        const results = await classifyTallaBatch(batches[i], makeGen(geminiKey));
+        const results = await classifyTallaBatch(batches[i], makeGen(geminiKey), CLASSIFY_RETRIES);
         await updateIssueTallas(db, results);
-        for (const r of results.values()) if (r.talla != null) classified += 1;
+        const values = [...results.values()];
+        for (const r of values) if (r.talla != null) classified += 1;
         okCount += 1;
+        // Lote entero sin señal (confidence 0 en todos) = fallback por cuota/error → cortar.
+        if (values.length > 0 && values.every(r => r.confidence === 0)) {
+          errors.push({ endpoint: `classify:batch:${i}`, message: 'sin clasificaciones (¿cuota Gemini agotada?) — corto el resto' });
+          break;
+        }
       } catch (err) {
         failCount += 1;
         errors.push({ endpoint: `classify:batch:${i}`, message: errMessage(err) });
+        break; // error duro → cortar; se reintenta el próximo sync
       }
     }
   } catch (err) {
