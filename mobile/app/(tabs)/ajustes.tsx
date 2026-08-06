@@ -196,7 +196,7 @@ export default function AjustesScreen() {
           onChangeText={t => setDc(prev => ({ ...prev, boardIds: t }))}
           autoCapitalize="none"
           autoCorrect={false}
-          placeholder="7,9"
+          placeholder="1234,5678"
           placeholderTextColor={Colors.textSubtle}
         />
 
