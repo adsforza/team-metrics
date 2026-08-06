@@ -297,3 +297,61 @@ export async function setBoardLastSync(db: SQLite.SQLiteDatabase, boardId: numbe
     [boardId, iso]
   );
 }
+
+export interface RawIssue {
+  id: string; title: string; description: string; status: string;
+  assignee_id: string | null; talla: string | null; talla_confidence: number | null;
+  created_at: string; updated_at: string; last_transition_at: string | null;
+}
+export interface RawTransition { issue_id: string; from_status: string; to_status: string; transitioned_at: string }
+export interface RawMember { id: string; display_name: string; email: string | null; avatar_url: string | null }
+export interface RawBundle { issues: RawIssue[]; transitions: RawTransition[]; members: RawMember[]; serverSyncedAt: string | null }
+
+export async function upsertServerRaw(db: SQLite.SQLiteDatabase, bundle: RawBundle): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    for (const m of bundle.members) {
+      await db.runAsync(
+        `INSERT INTO team_members (id, display_name, email, avatar_url) VALUES (?,?,?,?)
+         ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name, email=excluded.email, avatar_url=excluded.avatar_url`,
+        [m.id, m.display_name, m.email, m.avatar_url],
+      );
+    }
+    for (const i of bundle.issues) {
+      const pushed = i.talla != null ? 1 : 0;
+      await db.runAsync(
+        `INSERT INTO issues (id, title, description, status, assignee_id, talla, talla_confidence, created_at, updated_at, last_transition_at, talla_pushed)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)
+         ON CONFLICT(id) DO UPDATE SET
+           title=excluded.title, description=excluded.description, status=excluded.status,
+           assignee_id=excluded.assignee_id, updated_at=excluded.updated_at, last_transition_at=excluded.last_transition_at,
+           talla=COALESCE(excluded.talla, issues.talla),
+           talla_confidence=COALESCE(excluded.talla_confidence, issues.talla_confidence),
+           talla_pushed=CASE WHEN excluded.talla IS NOT NULL THEN 1 ELSE issues.talla_pushed END`,
+        [i.id, i.title, i.description, i.status, i.assignee_id, i.talla, i.talla_confidence, i.created_at, i.updated_at, i.last_transition_at, pushed],
+      );
+    }
+    for (const t of bundle.transitions) {
+      const exists = await db.getFirstAsync(
+        `SELECT id FROM transitions WHERE issue_id = ? AND to_status = ? AND transitioned_at = ?`,
+        [t.issue_id, t.to_status, t.transitioned_at],
+      );
+      if (!exists) {
+        await db.runAsync(
+          `INSERT INTO transitions (issue_id, from_status, to_status, transitioned_at) VALUES (?,?,?,?)`,
+          [t.issue_id, t.from_status, t.to_status, t.transitioned_at],
+        );
+      }
+    }
+  });
+}
+
+// El since efectivo para bajar de Jira: el más nuevo entre la última sync directa de este
+// board y el sentinela board_sync[0] (crudo del server). Ambos son ISO UTC (toISOString) →
+// comparación lexical válida.
+export async function getRawSince(db: SQLite.SQLiteDatabase, boardId: number): Promise<string | undefined> {
+  const board = await getBoardLastSync(db, boardId);
+  const sentinel = await getBoardLastSync(db, 0);
+  if (!board) return sentinel;
+  if (!sentinel) return board;
+  return board > sentinel ? board : sentinel;
+}
