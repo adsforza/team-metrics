@@ -17,13 +17,10 @@ export function WipRiskCard({ item, memberName, jiraBaseUrl }: Props) {
   const handleShare = async () => {
     const status = isExcedido ? '🔴 Excedido' : '🟡 En riesgo';
     const assignee = memberName ? `\nAsignado: ${memberName}` : '';
-    // El link va en `url` (no embebido en `message`): embeberlo hacía que iOS mostrara
-    // el share vacío en la 2ª invocación consecutiva.
-    const content: { message: string; url?: string } = {
-      message: `${status}: ${item.title}\nTalla: ${item.talla} · ${item.age_days.toFixed(2)}d cursado / límite ${item.limit_days.toFixed(2)}d${assignee}`,
-    };
-    if (jiraBaseUrl) content.url = `${jiraBaseUrl}/browse/${item.issue_id}`;
-    await Share.share(content);
+    const link = jiraBaseUrl ? `\n${jiraBaseUrl}/browse/${item.issue_id}` : '';
+    await Share.share({
+      message: `${status}: ${item.title}\nTalla: ${item.talla} · ${item.age_days.toFixed(2)}d cursado / límite ${item.limit_days.toFixed(2)}d${assignee}${link}`,
+    });
   };
 
   return (
