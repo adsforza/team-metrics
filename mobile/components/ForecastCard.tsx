@@ -8,33 +8,44 @@ function HistogramBars({ data }: { data: ForecastBin[] }) {
   const BAR_H = 60;
   const max = Math.max(...data.map(d => d.count), 1);
   return (
-    <View style={h.wrap}>
-      {data.map((d, i) => (
-        <View key={i} style={h.col}>
-          <View
-            style={[
-              h.bar,
-              {
-                height: Math.max((d.count / max) * BAR_H, d.count > 0 ? 2 : 0),
-                backgroundColor: Colors.primary,
-                opacity: 0.5 + 0.5 * (d.count / max),
-              },
-            ]}
-          />
-          {(i === 0 || i === data.length - 1 || i === Math.floor(data.length / 2)) && (
-            <Text style={h.label}>{d.x}</Text>
-          )}
-        </View>
-      ))}
-    </View>
+    <>
+      {/* Barras: todas comparten baseline (alto fijo BAR_H, sin labels adentro) */}
+      <View style={h.wrap}>
+        {data.map((d, i) => (
+          <View key={i} style={h.col}>
+            <View
+              style={[
+                h.bar,
+                {
+                  height: Math.max((d.count / max) * BAR_H, d.count > 0 ? 2 : 0),
+                  backgroundColor: Colors.primary,
+                  opacity: 0.5 + 0.5 * (d.count / max),
+                },
+              ]}
+            />
+          </View>
+        ))}
+      </View>
+      {/* Labels en fila aparte para no empujar las barras del baseline */}
+      <View style={h.labelsRow}>
+        {data.map((d, i) => (
+          <View key={i} style={h.col}>
+            {(i === 0 || i === data.length - 1 || i === Math.floor(data.length / 2)) && (
+              <Text style={h.label}>{d.x}</Text>
+            )}
+          </View>
+        ))}
+      </View>
+    </>
   );
 }
 
 const h = StyleSheet.create({
-  wrap: { height: 80, flexDirection: 'row', alignItems: 'flex-end', gap: 2, marginTop: 12 },
+  wrap: { height: 60, flexDirection: 'row', alignItems: 'flex-end', gap: 2, marginTop: 12 },
+  labelsRow: { flexDirection: 'row', gap: 2, marginTop: 2 },
   col: { flex: 1, alignItems: 'center', justifyContent: 'flex-end' },
   bar: { width: '80%', borderRadius: 2 },
-  label: { fontSize: 9, color: Colors.textSubtle, marginTop: 2 },
+  label: { fontSize: 9, color: Colors.textSubtle },
 });
 
 function fmtDate(iso: string): string {
