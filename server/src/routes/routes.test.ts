@@ -153,3 +153,35 @@ describe('POST /api/tallas', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('GET /api/raw', () => {
+  beforeAll(() => {
+    mockDb.prepare(`INSERT INTO issues VALUES ('RAW-OLD','old','','Done','u1','S',0.9,'2026-01-01T00:00:00Z','2026-01-10T00:00:00Z','2026-01-10T00:00:00Z','2026-01-10T00:00:00Z')`).run();
+    mockDb.prepare(`INSERT INTO issues VALUES ('RAW-NEW','new','','In Progress','u1',NULL,NULL,'2026-06-01T00:00:00Z','2026-06-20T00:00:00Z','2026-06-20T00:00:00Z','2026-06-20T00:00:00Z')`).run();
+    mockDb.prepare(`INSERT INTO transitions (issue_id,from_status,to_status,transitioned_at) VALUES ('RAW-NEW','To Do','In Progress','2026-06-05T00:00:00Z')`).run();
+    mockDb.prepare(`INSERT INTO sync_log (started_at,finished_at,synced_count,classified_count,error) VALUES ('2026-06-21T00:00:00Z','2026-06-21T00:05:00Z',10,5,NULL)`).run();
+  });
+
+  it('sin since devuelve issues, transitions, members y serverSyncedAt', async () => {
+    const res = await request(app).get('/api/raw');
+    expect(res.status).toBe(200);
+    const ids = res.body.issues.map((i: any) => i.id);
+    expect(ids).toContain('RAW-OLD');
+    expect(ids).toContain('RAW-NEW');
+    expect(Array.isArray(res.body.transitions)).toBe(true);
+    expect(Array.isArray(res.body.members)).toBe(true);
+    expect(res.body.serverSyncedAt).toBe('2026-06-21T00:05:00Z');
+  });
+
+  it('con since filtra por updated_at (en JS, tolera offset)', async () => {
+    const res = await request(app).get('/api/raw?since=2026-03-01T00:00:00Z');
+    expect(res.status).toBe(200);
+    const ids = res.body.issues.map((i: any) => i.id);
+    expect(ids).toContain('RAW-NEW');
+    expect(ids).not.toContain('RAW-OLD');
+    // transitions solo de los issues devueltos
+    for (const t of res.body.transitions) {
+      expect(ids).toContain(t.issue_id);
+    }
+  });
+});

@@ -11,6 +11,7 @@ import metricsRouter from './routes/metrics';
 import teamRouter from './routes/team';
 import syncRouter from './routes/sync';
 import tallasRouter from './routes/tallas';
+import rawRouter from './routes/raw';
 import { startSyncJob } from './services/sync';
 
 export const app = express();
@@ -22,6 +23,7 @@ app.use('/api/metrics', metricsRouter);
 app.use('/api/team', teamRouter);
 app.use('/api/sync', syncRouter);
 app.use('/api/tallas', tallasRouter);
+app.use('/api/raw', rawRouter);
 
 app.get('/api/config', (_req, res) => {
   res.json({ jiraBaseUrl: process.env.JIRA_BASE_URL ?? '' });
