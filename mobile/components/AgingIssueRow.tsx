@@ -12,10 +12,13 @@ interface Props {
 export function AgingIssueRow({ issue, memberName, jiraBaseUrl }: Props) {
   const handleShare = async () => {
     const assignee = memberName ? ` · ${memberName}` : '';
-    const link = jiraBaseUrl ? `\n${jiraBaseUrl}/browse/${issue.issue_id}` : '';
-    await Share.share({
-      message: `⏳ Sin movimiento: ${issue.title}\n${issue.status} · ${issue.talla ?? '?'}${assignee} · ${issue.days_in_status}d detenido${link}`,
-    });
+    // El link va en `url` (no embebido en `message`): embeberlo hacía que iOS mostrara
+    // el share vacío en la 2ª invocación consecutiva.
+    const content: { message: string; url?: string } = {
+      message: `⏳ Sin movimiento: ${issue.title}\n${issue.status} · ${issue.talla ?? '?'}${assignee} · ${issue.days_in_status}d detenido`,
+    };
+    if (jiraBaseUrl) content.url = `${jiraBaseUrl}/browse/${issue.issue_id}`;
+    await Share.share(content);
   };
 
   return (
