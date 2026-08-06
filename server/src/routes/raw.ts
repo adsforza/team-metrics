@@ -10,18 +10,26 @@ router.get('/', (req, res, next) => {
 
     const allIssues = db.prepare(
       `SELECT id, title, description, status, assignee_id, talla, talla_confidence,
-              created_at, updated_at, last_transition_at
+              created_at, updated_at, last_transition_at, talla_updated_at
        FROM issues`,
     ).all() as any[];
 
     // Filtro por since en JS: los updated_at de Jira traen offset (-0300) que
     // julianday()/comparación lexical de SQLite no maneja; Date.parse sí.
+    // El efectivo es el max(updated_at, talla_updated_at) para que las tallas
+    // clasificadas después del sync propaguen por el delta.
     const sinceMs = since ? Date.parse(since) : null;
-    const issues = sinceMs != null && !isNaN(sinceMs)
-      ? allIssues.filter(i => Date.parse(i.updated_at) >= sinceMs)
+    const eff = (i: any) => {
+      const u = Date.parse(i.updated_at);
+      const t = i.talla_updated_at ? Date.parse(i.talla_updated_at) : NaN;
+      return Math.max(isNaN(u) ? -Infinity : u, isNaN(t) ? -Infinity : t);
+    };
+    const filtered = sinceMs != null && !isNaN(sinceMs)
+      ? allIssues.filter(i => eff(i) >= sinceMs)
       : allIssues;
 
-    const ids = new Set(issues.map(i => i.id));
+    const ids = new Set(filtered.map(i => i.id));
+    const issues = filtered.map(({ talla_updated_at, ...rest }) => rest);
     const allTransitions = db.prepare(
       `SELECT issue_id, from_status, to_status, transitioned_at FROM transitions`,
     ).all() as any[];

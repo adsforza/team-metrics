@@ -8,8 +8,8 @@ const NOW = new Date('2026-06-26T12:00:00Z');
 
 // A completed issue: enters In Progress at `startAt`, reaches Done at `doneAt`.
 function seedCompleted(db: Database.Database, id: string, talla: string, startAt: string, doneAt: string) {
-  db.prepare(`INSERT INTO issues VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
-    id, `Done ${id}`, '', 'Done', null, talla, 0.9, '2026-01-01T00:00:00Z', doneAt, '2026-06-26T00:00:00Z', doneAt,
+  db.prepare(`INSERT INTO issues VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    id, `Done ${id}`, '', 'Done', null, talla, 0.9, '2026-01-01T00:00:00Z', doneAt, '2026-06-26T00:00:00Z', doneAt, null,
   );
   db.prepare(`INSERT INTO transitions (issue_id, from_status, to_status, transitioned_at) VALUES (?,?,?,?)`)
     .run(id, 'To Do', 'In Progress', startAt);
@@ -19,8 +19,8 @@ function seedCompleted(db: Database.Database, id: string, talla: string, startAt
 
 // An in-progress issue: enters In Progress at `startAt`, optional extra transitions, not Done.
 function seedActive(db: Database.Database, id: string, talla: string | null, status: string, startAt: string, extra: [string, string][] = []) {
-  db.prepare(`INSERT INTO issues VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
-    id, `WIP ${id}`, '', status, 'u1', talla, 0.9, '2026-06-01T00:00:00Z', startAt, '2026-06-26T00:00:00Z', startAt,
+  db.prepare(`INSERT INTO issues VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    id, `WIP ${id}`, '', status, 'u1', talla, 0.9, '2026-06-01T00:00:00Z', startAt, '2026-06-26T00:00:00Z', startAt, null,
   );
   db.prepare(`INSERT INTO transitions (issue_id, from_status, to_status, transitioned_at) VALUES (?,?,?,?)`)
     .run(id, 'To Do', 'In Progress', startAt);

@@ -13,14 +13,15 @@ router.post('/', (req, res, next) => {
     }
     const db = getDb();
     const stmt = db.prepare(
-      `UPDATE issues SET talla = ?, talla_confidence = ? WHERE id = ? AND talla IS NULL`,
+      `UPDATE issues SET talla = ?, talla_confidence = ?, talla_updated_at = ? WHERE id = ? AND talla IS NULL`,
     );
     const apply = db.transaction((items: any[]) => {
       let updated = 0;
       for (const it of items) {
         if (!it || typeof it.id !== 'string' || !VALID_TALLAS.has(it.talla)) continue;
         const conf = typeof it.confidence === 'number' ? it.confidence : null;
-        const info = stmt.run(it.talla, conf, it.id);
+        const now = new Date().toISOString();
+        const info = stmt.run(it.talla, conf, now, it.id);
         updated += info.changes;
       }
       return updated;

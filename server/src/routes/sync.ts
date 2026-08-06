@@ -33,8 +33,8 @@ router.post('/reclassify', async (_req, res) => {
         for (const issue of batch) {
           const r = results.get(issue.id);
           if (r) {
-            db.prepare(`UPDATE issues SET talla = ?, talla_confidence = ? WHERE id = ?`)
-              .run(r.talla, r.confidence, issue.id);
+            db.prepare(`UPDATE issues SET talla = ?, talla_confidence = ?, talla_updated_at = ? WHERE id = ?`)
+              .run(r.talla, r.confidence, new Date().toISOString(), issue.id);
             if (r.talla) classified++;
           }
         }

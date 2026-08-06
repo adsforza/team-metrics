@@ -20,7 +20,8 @@ export function applySchema(db: Database.Database): void {
       created_at          TEXT NOT NULL,
       updated_at          TEXT NOT NULL,
       synced_at           TEXT NOT NULL,
-      last_transition_at  TEXT
+      last_transition_at  TEXT,
+      talla_updated_at    TEXT
     );
 
     CREATE TABLE IF NOT EXISTS transitions (
@@ -50,4 +51,9 @@ export function applySchema(db: Database.Database): void {
       last_synced_at TEXT NOT NULL
     );
   `);
+
+  const issueCols = db.prepare(`PRAGMA table_info(issues)`).all() as { name: string }[];
+  if (!issueCols.some(c => c.name === 'talla_updated_at')) {
+    db.exec(`ALTER TABLE issues ADD COLUMN talla_updated_at TEXT`);
+  }
 }

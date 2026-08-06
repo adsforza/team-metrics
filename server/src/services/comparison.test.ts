@@ -12,9 +12,9 @@ const PREV_WEEK = '2026-06-15';
 let db: Database.Database;
 
 function seedTransition(issueId: string, fromStatus: string, toStatus: string, at: string) {
-  db.prepare(`INSERT OR IGNORE INTO issues VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+  db.prepare(`INSERT OR IGNORE INTO issues VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(issueId, `Issue ${issueId}`, '', toStatus, null, 'M', 0.9,
-        '2026-01-01T00:00:00Z', at, at, at);
+        '2026-01-01T00:00:00Z', at, at, at, null);
   db.prepare(`UPDATE issues SET status = ? WHERE id = ?`).run(toStatus, issueId);
   db.prepare(`INSERT INTO transitions (issue_id, from_status, to_status, transitioned_at) VALUES (?,?,?,?)`)
     .run(issueId, fromStatus, toStatus, at);

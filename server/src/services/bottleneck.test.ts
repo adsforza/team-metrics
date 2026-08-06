@@ -9,18 +9,18 @@ let db: Database.Database;
 
 // Insert a non-done issue currently in `status`, which entered it at `enteredAt`
 function seedCurrent(id: string, status: string, enteredAt: string, talla: string | null = 'M') {
-  db.prepare(`INSERT INTO issues VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+  db.prepare(`INSERT INTO issues VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(id, `Issue ${id}`, '', status, 'u1', talla, 0.9,
-        '2026-01-01T00:00:00Z', enteredAt, '2026-06-27T00:00:00Z', enteredAt);
+        '2026-01-01T00:00:00Z', enteredAt, '2026-06-27T00:00:00Z', enteredAt, null);
   db.prepare(`INSERT INTO transitions (issue_id, from_status, to_status, transitioned_at) VALUES (?,?,?,?)`)
     .run(id, 'To Do', status, enteredAt);
 }
 
 // Insert a done issue that passed through `status` between enteredAt and exitedAt (completed pass)
 function seedPass(id: string, status: string, enteredAt: string, exitedAt: string, talla: string = 'M') {
-  db.prepare(`INSERT INTO issues VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+  db.prepare(`INSERT INTO issues VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(id, `Done ${id}`, '', 'Done', 'u1', talla, 0.9,
-        '2026-01-01T00:00:00Z', exitedAt, '2026-06-27T00:00:00Z', exitedAt);
+        '2026-01-01T00:00:00Z', exitedAt, '2026-06-27T00:00:00Z', exitedAt, null);
   db.prepare(`INSERT INTO transitions (issue_id, from_status, to_status, transitioned_at) VALUES (?,?,?,?)`)
     .run(id, 'To Do', status, enteredAt);
   db.prepare(`INSERT INTO transitions (issue_id, from_status, to_status, transitioned_at) VALUES (?,?,?,?)`)
