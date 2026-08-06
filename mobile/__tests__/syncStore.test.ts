@@ -97,4 +97,16 @@ describe('syncStore.sync', () => {
     expect(s.lastSyncStatus).toBe('partial');
     expect(s.lastSyncedAt).toBe('NOW');
   });
+
+  test('sync pasa un onProgress a performSync y limpia progress al terminar', async () => {
+    (isServerReachable as jest.Mock).mockResolvedValue(true);
+    (performSync as jest.Mock).mockImplementation((_d: unknown, _a: unknown, onProgress?: (p: unknown) => void) => {
+      onProgress?.({ label: 'Bajando métricas…' });
+      return Promise.resolve({ success: true, errors: [], syncedAt: 'NOW', okCount: 5, failCount: 0 });
+    });
+    await useSyncStore.getState().sync();
+    const s = useSyncStore.getState();
+    expect(performSync).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.any(Function));
+    expect(s.progress).toBe(null);
+  });
 });

@@ -164,4 +164,17 @@ describe('directSync', () => {
     expect(fakeGenerate).toHaveBeenCalledTimes(2);
     expect(updateIssueTallas).toHaveBeenCalledTimes(2);
   });
+
+  it('reporta progreso por board via deps.onProgress', async () => {
+    (getRawSince as jest.Mock).mockResolvedValue(undefined);
+    (readUnclassifiedIssues as jest.Mock).mockResolvedValue([]);
+    (loadCoreIssues as jest.Mock).mockResolvedValue([]);
+    (loadCoreTransitions as jest.Mock).mockResolvedValue([]);
+    (loadCoreMembers as jest.Mock).mockResolvedValue([]);
+    const http = jest.fn().mockResolvedValue({ issues: [], total: 0 });
+    const onProgress = jest.fn();
+    const config: DirectSyncConfig = { boards: [boardCfg], geminiKey: 'gk', filters: {} };
+    await directSync(dbStub, config, { http, now: NOW, onProgress });
+    expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({ label: expect.stringContaining('board') }));
+  });
 });

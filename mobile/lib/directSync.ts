@@ -24,6 +24,7 @@ import type { SnapshotBundle } from './snapshots';
 import { writeSnapshots } from './snapshots';
 import type { Issue } from './types';
 import { getLastNMondays } from './weeks';
+import type { ProgressFn } from './progress';
 import {
   upsertRawIssues, getRawSince, setBoardLastSync,
   readUnclassifiedIssues, updateIssueTallas,
@@ -136,6 +137,7 @@ export interface DirectSyncDeps {
   http?: JiraHttp;
   makeGen?: (key: string) => GenerateFn;
   now?: Date;
+  onProgress?: ProgressFn;
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -154,6 +156,7 @@ async function classifyAllPending(
   db: SQLite.SQLiteDatabase,
   geminiKey: string,
   makeGen: (key: string) => GenerateFn,
+  onProgress?: ProgressFn,
 ): Promise<{ okCount: number; failCount: number; classified: number; errors: DirectSyncError[] }> {
   const errors: DirectSyncError[] = [];
   let okCount = 0;
@@ -163,6 +166,7 @@ async function classifyAllPending(
     const pending = await readUnclassifiedIssues(db);
     const batches = chunk(pending, CLASSIFY_BATCH_SIZE);
     for (let i = 0; i < batches.length; i++) {
+      onProgress?.({ label: `Clasificando lote ${i + 1}/${batches.length}`, current: i + 1, total: batches.length });
       try {
         const results = await classifyTallaBatch(batches[i], makeGen(geminiKey));
         await updateIssueTallas(db, results);
@@ -203,12 +207,15 @@ export async function directSync(
   const makeGen = deps.makeGen ?? makeGeminiGenerate;
   const now = deps.now ?? new Date();
   const syncedAt = now.toISOString();
+  const onProgress = deps.onProgress;
 
   const errors: DirectSyncError[] = [];
   let okCount = 0;
   let failCount = 0;
 
-  for (const boardCfg of config.boards) {
+  for (let bi = 0; bi < config.boards.length; bi++) {
+    const boardCfg = config.boards[bi];
+    onProgress?.({ label: `Bajando board ${bi + 1}/${config.boards.length}`, current: bi + 1, total: config.boards.length });
     try {
       const since = await getRawSince(db, boardCfg.boardId);
       const raw = await fetchBoardIssues(boardCfg, http, since);
@@ -221,11 +228,12 @@ export async function directSync(
     }
   }
 
-  const cls = await classifyAllPending(db, config.geminiKey, makeGen);
+  const cls = await classifyAllPending(db, config.geminiKey, makeGen, onProgress);
   okCount += cls.okCount;
   failCount += cls.failCount;
   errors.push(...cls.errors);
 
+  onProgress?.({ label: 'Calculando…' });
   await recomputeSnapshots(db, config.filters, now, syncedAt);
 
   return { success: errors.length === 0, errors, syncedAt, okCount, failCount };
@@ -252,8 +260,10 @@ export async function directReclassify(
   const makeGen = deps.makeGen ?? makeGeminiGenerate;
   const now = deps.now ?? new Date();
   const syncedAt = now.toISOString();
+  const onProgress = deps.onProgress;
 
-  const cls = await classifyAllPending(db, config.geminiKey, makeGen);
+  const cls = await classifyAllPending(db, config.geminiKey, makeGen, onProgress);
+  onProgress?.({ label: 'Calculando…' });
   await recomputeSnapshots(db, config.filters, now, syncedAt);
 
   return {

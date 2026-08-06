@@ -88,6 +88,13 @@ describe('performSync', () => {
       [0, '2026-06-21T00:05:00Z'],
     );
   });
+
+  test('reporta progreso via onProgress', async () => {
+    mockAllFetch();
+    const onProgress = jest.fn();
+    await performSync(undefined, undefined, onProgress);
+    expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({ label: expect.stringContaining('métricas') }));
+  });
 });
 
 describe('pushPendingTallas', () => {

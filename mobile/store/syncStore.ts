@@ -7,6 +7,7 @@ import { directSync, directReclassify } from '../lib/directSync';
 import { getDb } from '../lib/db';
 import { dateRangeFor, useFilterStore } from './filterStore';
 import type { SyncStatus } from '../lib/syncStatus';
+import type { SyncProgress } from '../lib/progress';
 
 export type { SyncStatus };
 export type SyncMode = 'backend' | 'direct' | null;
@@ -23,6 +24,7 @@ interface SyncState {
   lastSyncMode: SyncMode;
   errors: SyncError[];
   dataVersion: number;
+  progress: SyncProgress | null;
   loadLastSynced: () => Promise<void>;
   sync: () => Promise<void>;
   reclassify: () => Promise<ReclassifyOutcome>;
@@ -35,6 +37,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   lastSyncMode: null,
   errors: [],
   dataVersion: 0,
+  progress: null,
 
   loadLastSynced: async () => {
     const val = await AsyncStorage.getItem(LAST_SYNCED_KEY);
@@ -47,18 +50,19 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
     const { timeRange, assignee } = useFilterStore.getState();
     const range = dateRangeFor(timeRange);
+    const onProgress = (p: SyncProgress) => set({ progress: p });
 
     try {
       let result;
       let mode: SyncMode;
 
       if (await isServerReachable()) {
-        result = await performSync(range, assignee);
+        result = await performSync(range, assignee, onProgress);
         mode = 'backend';
       } else {
         const cfg = await getDirectConfig();
         if (!cfg) {
-          set({ loading: false, lastSyncStatus: 'offline' });
+          set({ loading: false, lastSyncStatus: 'offline', progress: null });
           return;
         }
         const db = await getDb();
@@ -66,7 +70,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
           boards: cfg.boards,
           geminiKey: cfg.geminiKey,
           filters: { from: range.from, to: range.to, assignee },
-        });
+        }, { onProgress });
         mode = 'direct';
       }
 
@@ -79,12 +83,14 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         lastSyncedAt: result.okCount > 0 ? result.syncedAt : get().lastSyncedAt,
         errors: result.errors,
         dataVersion: get().dataVersion + 1,
+        progress: null,
       });
     } catch (err) {
       set({
         loading: false,
         lastSyncStatus: 'offline',
         errors: [{ endpoint: 'global', message: String(err) }],
+        progress: null,
       });
     }
   },
@@ -95,18 +101,19 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
     const { timeRange, assignee } = useFilterStore.getState();
     const range = dateRangeFor(timeRange);
+    const onProgress = (p: SyncProgress) => set({ progress: p });
 
     try {
       // Con backend disponible, la reclasificación corre en el server (mejor cuota/latencia).
       if (await isServerReachable()) {
         const r = await triggerReclassify();
-        set({ loading: false });
+        set({ loading: false, progress: null });
         return { mode: 'backend', pending: r.pending ?? 0 };
       }
 
       const cfg = await getDirectConfig();
       if (!cfg) {
-        set({ loading: false, lastSyncStatus: 'offline' });
+        set({ loading: false, lastSyncStatus: 'offline', progress: null });
         return { mode: 'none' };
       }
       const db = await getDb();
@@ -114,15 +121,16 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         boards: cfg.boards,
         geminiKey: cfg.geminiKey,
         filters: { from: range.from, to: range.to, assignee },
-      });
+      }, { onProgress });
       set({
         loading: false,
         errors: result.errors,
         dataVersion: get().dataVersion + 1,
+        progress: null,
       });
       return { mode: 'direct', classified: result.classified, failCount: result.failCount };
     } catch (err) {
-      set({ loading: false, errors: [{ endpoint: 'reclassify', message: String(err) }] });
+      set({ loading: false, errors: [{ endpoint: 'reclassify', message: String(err) }], progress: null });
       return { mode: 'none' };
     }
   },

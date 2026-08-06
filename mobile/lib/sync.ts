@@ -13,6 +13,7 @@ import type {
 import { writeSnapshots, type SnapshotBundle } from './snapshots';
 
 import { getLastNMondays } from './weeks';
+import type { ProgressFn } from './progress';
 
 export const LAST_SYNCED_KEY = 'last_synced_at';
 
@@ -39,7 +40,7 @@ export async function pushPendingTallas(
   }
 }
 
-export async function performSync(dateParams?: { from: string; to: string }, assignee?: string | null): Promise<SyncResult> {
+export async function performSync(dateParams?: { from: string; to: string }, assignee?: string | null, onProgress?: ProgressFn): Promise<SyncResult> {
   const baseUrl = await getBaseUrl();
   const db = await getDb();
   const errors: SyncError[] = [];
@@ -51,6 +52,7 @@ export async function performSync(dateParams?: { from: string; to: string }, ass
   const qs = parts.length ? '?' + parts.join('&') : '';
 
   const mondays = getLastNMondays(6);
+  onProgress?.({ label: 'Bajando métricas…' });
   const [kpi, throughput, team, aging, wipRisk, bottleneck, forecast, cfd, issues, byTalla] =
     await Promise.allSettled([
       fetchJson<KPIMetrics>(`${baseUrl}/api/metrics${qs}`),
@@ -104,10 +106,12 @@ export async function performSync(dateParams?: { from: string; to: string }, ass
   };
   await writeSnapshots(db, bundle, syncedAt);
 
+  onProgress?.({ label: 'Enviando tallas…' });
   const push = await pushPendingTallas(db);
   if (push.error) errors.push({ endpoint: '/api/tallas', message: push.error });
 
   // SP-C: mantener el crudo caliente para el próximo direct mode (best-effort).
+  onProgress?.({ label: 'Bajando novedades…' });
   try {
     const sentinel = await getBoardLastSync(db, 0);
     const raw = await fetchRaw(sentinel);
