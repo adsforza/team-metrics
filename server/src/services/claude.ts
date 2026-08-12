@@ -13,7 +13,8 @@ export function resetClient(): void { _client = null; }
 
 const geminiGenerate: GenerateFn = async (prompt, { systemInstruction, maxOutputTokens }) => {
   const model = getClient().getGenerativeModel({
-    model: process.env.GEMINI_MODEL || 'gemini-2.0-flash-lite',
+    // Alias "-latest": las versiones fijas se retiran (gemini-2.0-flash-lite → 404).
+    model: process.env.GEMINI_MODEL || 'gemini-flash-lite-latest',
     systemInstruction,
     generationConfig: { maxOutputTokens },
   });

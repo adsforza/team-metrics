@@ -42,7 +42,9 @@ export const jiraHttpFetch: JiraHttp = async ({ url, auth, params }) => {
   return res.json();
 };
 
-export function makeGeminiGenerate(apiKey: string, model = 'gemini-2.0-flash-lite'): GenerateFn {
+// Alias "-latest": Google retira las versiones fijas (gemini-2.0-flash-lite dejó de
+// existir y devolvía 404), el alias siempre apunta al flash-lite vigente.
+export function makeGeminiGenerate(apiKey: string, model = 'gemini-flash-lite-latest'): GenerateFn {
   const client = new GoogleGenerativeAI(apiKey);
   return async (prompt, { systemInstruction, maxOutputTokens }) => {
     const m = client.getGenerativeModel({ model, systemInstruction, generationConfig: { maxOutputTokens } });

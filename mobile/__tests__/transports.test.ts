@@ -30,7 +30,7 @@ describe('jiraHttpFetch', () => {
 describe('makeGeminiGenerate', () => {
   it('calls generateContent with the model config and returns text', async () => {
     mockGenerateContent = jest.fn(async () => ({ response: { text: () => '[{"talla":"M","confidence":0.9}]' } }));
-    const gen = makeGeminiGenerate('key123', 'gemini-2.0-flash-lite');
+    const gen = makeGeminiGenerate('key123', 'gemini-flash-lite-latest');
     const out = await gen('prompt', { systemInstruction: 'sys', maxOutputTokens: 40 });
     expect(out).toBe('[{"talla":"M","confidence":0.9}]');
     expect(mockGenerateContent).toHaveBeenCalledWith('prompt');
