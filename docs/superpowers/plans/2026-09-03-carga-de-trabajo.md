@@ -596,19 +596,68 @@ it('agrega las columnas de carga de trabajo sobre una base preexistente', () => 
 });
 ```
 
-Agregar a `server/src/services/sync.test.ts`:
+**Primero, actualizar el mock existente.** El `vi.mock('./jira')` del tope de
+`server/src/services/sync.test.ts` devuelve clients sin `fetchBoardName`, y el Step 3
+de esta tarea hace que `runSync` lo llame. Sin este cambio **los tests que hoy pasan se
+rompen** con `client.fetchBoardName is not a function`. Agregar al client existente:
 
 ```ts
-it('persiste requester, priority y la union de boards', async () => {
-  // El mock de createJiraClients debe devolver dos clients (9534 y 9536) donde
-  // DPP-1 aparece en ambos y DPP-2 solo en 9536.
-  await runSync(db);
-  const a = db.prepare(`SELECT requester, priority, boards FROM issues WHERE id='DPP-1'`).get() as any;
-  expect(a.requester).toBe('Tony Stack');
-  expect(a.priority).toBe('High (P1)');
-  expect(a.boards.split(',').map(Number).sort()).toEqual([9534, 9536]);
-  const b = db.prepare(`SELECT boards FROM issues WHERE id='DPP-2'`).get() as any;
-  expect(b.boards).toBe('9536');
+    fetchBoardName: vi.fn().mockResolvedValue('Board Uno'),
+```
+
+y sumar los tres campos nuevos al issue `OPS-1` del mock (`requester: null, priority: null,
+boards: [1]`), que ahora forman parte de `JiraIssueRaw`.
+
+Después, agregar el test nuevo con su propio mock de dos boards:
+
+```ts
+const issueEn = (id: string, boards: number[]) => ({
+  id, title: 'T', description: '', status: 'Backlog', assignee: null,
+  requester: 'Tony Stack', priority: 'High (P1)', boards,
+  created_at: '2026-06-01T00:00:00.000Z', updated_at: '2026-06-01T00:00:00.000Z',
+  transitions: [],
+});
+
+describe('runSync — carga de trabajo', () => {
+  let db: Database.Database;
+
+  beforeEach(async () => {
+    db = new Database(':memory:');
+    applySchema(db);
+    vi.resetModules();
+    // DPP-1 esta en los dos boards; DPP-2 solo en 9536.
+    vi.doMock('./jira', () => ({
+      createJiraClients: () => [
+        { boardId: 9534,
+          fetchIssues: vi.fn().mockResolvedValue([issueEn('DPP-1', [9534])]),
+          fetchBoardName: vi.fn().mockResolvedValue('Black Team Infra') },
+        { boardId: 9536,
+          fetchIssues: vi.fn().mockResolvedValue([issueEn('DPP-1', [9536]), issueEn('DPP-2', [9536])]),
+          fetchBoardName: vi.fn().mockResolvedValue('Blue Team Infra') },
+      ],
+    }));
+  });
+
+  it('persiste requester, priority y la union de boards', async () => {
+    const { runSync: run } = await import('./sync');
+    await run(db);
+    const a = db.prepare(`SELECT requester, priority, boards FROM issues WHERE id='DPP-1'`).get() as any;
+    expect(a.requester).toBe('Tony Stack');
+    expect(a.priority).toBe('High (P1)');
+    expect(a.boards.split(',').map(Number).sort((x: number, y: number) => x - y)).toEqual([9534, 9536]);
+    const b = db.prepare(`SELECT boards FROM issues WHERE id='DPP-2'`).get() as any;
+    expect(b.boards).toBe('9536');
+  });
+
+  it('guarda el nombre de cada board en board_sync', async () => {
+    const { runSync: run } = await import('./sync');
+    await run(db);
+    const rows = db.prepare(`SELECT board_id, name FROM board_sync ORDER BY board_id`).all() as any[];
+    expect(rows).toEqual([
+      { board_id: 9534, name: 'Black Team Infra' },
+      { board_id: 9536, name: 'Blue Team Infra' },
+    ]);
+  });
 });
 ```
 
@@ -956,7 +1005,20 @@ export async function readWorkload(db: SQLite.SQLiteDatabase): Promise<WorkloadR
 }
 ```
 
-Y extender `loadCoreIssues` (la que alimenta `computeBundle`) para que devuelva también `requester`, `priority` y `boards` parseado a `number[]`.
+Extender `loadCoreIssues` (`mobile/lib/db.ts:194`, la que alimenta `computeBundle`). **Cambiarle
+el tipo de retorno a `CoreIssueWorkload[]`**, no solo agregar columnas al SELECT: así el
+compilador garantiza que los campos llegan, en vez de que un cast los dé por supuestos.
+
+```ts
+export async function loadCoreIssues(db: SQLite.SQLiteDatabase): Promise<CoreIssueWorkload[]> {
+  const rows = await db.getAllAsync<any>(
+    `SELECT id, title, status, assignee_id, talla, created_at, last_transition_at,
+            requester, priority, boards FROM issues`);
+  return rows.map(r => ({ ...r, boards: r.boards ? String(r.boards).split(',').map(Number) : [] }));
+}
+```
+
+`CoreIssueWorkload extends CoreIssueWithTitle`, así que todo consumidor actual sigue compilando.
 
 - [ ] **Step 4: Correr los tests**
 
@@ -1036,7 +1098,7 @@ En `mobile/lib/directSync.ts`, `computeBundle` recibe un parámetro nuevo y devu
 
 ```ts
 export function computeBundle(
-  issues: CoreIssueWithTitle[],
+  issues: CoreIssueWorkload[],
   transitions: CoreTransition[],
   members: CoreMember[],
   filters: { from?: string; to?: string; assignee?: string | null },
@@ -1045,8 +1107,12 @@ export function computeBundle(
 ): SnapshotBundle {
 ```
 
+El parámetro pasa a `CoreIssueWorkload[]` (que extiende `CoreIssueWithTitle`) en vez de
+castear adentro: si `loadCoreIssues` no trae los campos nuevos, falla la compilación en
+vez de producir squads vacíos en silencio.
+
 ```ts
-    workload: computeWorkload(issues as CoreIssueWorkload[], boards, params),
+    workload: computeWorkload(issues, boards, params),
 ```
 
 En el orquestador de `directSync`, leer los boards de `board_sync` (id + name) y pasarlos a `computeBundle`. Cuando el nombre esté en `NULL`, usar `Board {id}`.
