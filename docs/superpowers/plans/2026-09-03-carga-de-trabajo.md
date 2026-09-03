@@ -239,6 +239,15 @@ describe('computeWorkload', () => {
     expect(r.totals.compartidos).toBe(1);
   });
 
+  it('no cuenta como compartido un issue que no se muestra en ningun squad', () => {
+    // Ticket viejo y cerrado presente en los dos boards: ni pedido (fuera de rango)
+    // ni pendiente (done). No debe inflar compartidos, porque no hay fila que explicar.
+    const r = computeWorkload([iss({ id: 'A', boards: [9534, 9536],
+      status: 'Finalizada', created_at: '2020-01-01T00:00:00.000Z' })], BOARDS, RANGE);
+    expect(r.totals).toEqual({ pedidos: 0, pendientes: 0, compartidos: 0 });
+    expect(r.squads.every(s => s.requesters.length === 0)).toBe(true);
+  });
+
   it('agrupa el requester nulo en un bucket propio', () => {
     const r = computeWorkload([
       iss({ id: 'A', requester: null }),
@@ -341,11 +350,17 @@ export function computeWorkload(
   for (const issue of issues) {
     const mine = issue.boards.filter(b => known.has(b));
     if (mine.length === 0) continue;
-    if (mine.length > 1) compartidos++;
 
     const esPedido = enRango(issue.created_at, params.from, params.to);
     const esPend = isPendiente(issue.status);
     if (!esPedido && !esPend) continue;
+
+    // compartidos se cuenta DESPUES del filtro, a proposito: el numero existe para
+    // explicar por que la suma de los squads supera al total en pantalla, asi que
+    // solo puede contar issues que efectivamente se muestran. Contarlo antes hace
+    // que un ticket viejo y cerrado presente en los dos boards infle el contador
+    // sin que haya ninguna fila a la que atribuirselo.
+    if (mine.length > 1) compartidos++;
 
     if (esPedido) totalPedidos++;
     if (esPend) totalPendientes++;
