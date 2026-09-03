@@ -86,22 +86,24 @@ const issueEn = (id: string, boards: number[]) => ({
 
 describe('runSync — carga de trabajo', () => {
   let db: Database.Database;
+  // Los clients se arman una sola vez por test y el mock devuelve SIEMPRE las mismas
+  // instancias, para poder inspeccionar con que argumentos se llamo a fetchIssues.
+  let clients: Array<{ boardId: number; fetchIssues: any; fetchBoardName: any }>;
 
   beforeEach(async () => {
     db = new Database(':memory:');
     applySchema(db);
     vi.resetModules();
     // DPP-1 esta en los dos boards; DPP-2 solo en 9536.
-    vi.doMock('./jira', () => ({
-      createJiraClients: () => [
-        { boardId: 9534,
-          fetchIssues: vi.fn().mockResolvedValue([issueEn('DPP-1', [9534])]),
-          fetchBoardName: vi.fn().mockResolvedValue('Black Team Infra') },
-        { boardId: 9536,
-          fetchIssues: vi.fn().mockResolvedValue([issueEn('DPP-1', [9536]), issueEn('DPP-2', [9536])]),
-          fetchBoardName: vi.fn().mockResolvedValue('Blue Team Infra') },
-      ],
-    }));
+    clients = [
+      { boardId: 9534,
+        fetchIssues: vi.fn().mockResolvedValue([issueEn('DPP-1', [9534])]),
+        fetchBoardName: vi.fn().mockResolvedValue('Black Team Infra') },
+      { boardId: 9536,
+        fetchIssues: vi.fn().mockResolvedValue([issueEn('DPP-1', [9536]), issueEn('DPP-2', [9536])]),
+        fetchBoardName: vi.fn().mockResolvedValue('Blue Team Infra') },
+    ];
+    vi.doMock('./jira', () => ({ createJiraClients: () => clients }));
   });
 
   it('persiste requester, priority y la union de boards', async () => {
@@ -110,9 +112,60 @@ describe('runSync — carga de trabajo', () => {
     const a = db.prepare(`SELECT requester, priority, boards FROM issues WHERE id='DPP-1'`).get() as any;
     expect(a.requester).toBe('Tony Stack');
     expect(a.priority).toBe('High (P1)');
-    expect(a.boards.split(',').map(Number).sort((x: number, y: number) => x - y)).toEqual([9534, 9536]);
+    // String exacto, no re-ordenado: asi el test detecta si se dejara de ordenar.
+    expect(a.boards).toBe('9534,9536');
     const b = db.prepare(`SELECT boards FROM issues WHERE id='DPP-2'`).get() as any;
     expect(b.boards).toBe('9536');
+  });
+
+  it('un board nuevo fuerza sync completo de todos los boards', async () => {
+    // 9534 ya venia sincronizando; 9536 se agrega recien ahora. Si 9534 fuera
+    // incremental, un issue compartido sin cambios volveria solo desde 9536 y el
+    // ON CONFLICT le borraria el 9534.
+    db.prepare(`INSERT INTO board_sync (board_id, last_synced_at) VALUES (9534, '2026-01-01T00:00:00.000Z')`).run();
+    const { runSync: run } = await import('./sync');
+    await run(db);
+    for (const c of clients) {
+      expect(c.fetchIssues).toHaveBeenCalledWith(undefined);   // full sync, no incremental
+    }
+  });
+
+  it('con todas las marcas presentes sincroniza incremental', async () => {
+    db.prepare(`INSERT INTO board_sync (board_id, last_synced_at) VALUES (9534, '2026-01-01T00:00:00.000Z')`).run();
+    db.prepare(`INSERT INTO board_sync (board_id, last_synced_at) VALUES (9536, '2026-02-02T00:00:00.000Z')`).run();
+    const { runSync: run } = await import('./sync');
+    await run(db);
+    expect(clients[0].fetchIssues).toHaveBeenCalledWith('2026-01-01T00:00:00.000Z');
+    expect(clients[1].fetchIssues).toHaveBeenCalledWith('2026-02-02T00:00:00.000Z');
+  });
+
+  it('agregar un board no le borra la procedencia a un issue compartido sin cambios', async () => {
+    // El escenario de perdida de datos real. 9534 ya venia sincronizando y DPP-1
+    // no cambio desde entonces, asi que en incremental ese board no lo devuelve.
+    // Sin el full sync forzado, DPP-1 volveria solo desde 9536 y el ON CONFLICT
+    // le borraria el 9534, sacandolo del squad Black en silencio.
+    clients[0].fetchIssues = vi.fn().mockImplementation((updatedSince?: string) =>
+      Promise.resolve(updatedSince ? [] : [issueEn('DPP-1', [9534])]));
+    db.prepare(`INSERT INTO board_sync (board_id, last_synced_at) VALUES (9534, '2026-01-01T00:00:00.000Z')`).run();
+    db.prepare(`INSERT INTO issues (id, title, description, status, created_at, updated_at, synced_at, boards)
+                VALUES ('DPP-1','t','','Backlog','2026-01-01','2026-01-01','2026-01-01','9534')`).run();
+
+    const { runSync: run } = await import('./sync');
+    await run(db);
+
+    const row = db.prepare(`SELECT boards FROM issues WHERE id='DPP-1'`).get() as any;
+    expect(row.boards).toBe('9534,9536');
+  });
+
+  it('el ON CONFLICT refleja la membresia de la corrida, no la acumulada', async () => {
+    // Ejerce la rama ON CONFLICT, que los tests de arriba nunca tocan (base fresca = INSERT).
+    db.prepare(`INSERT INTO issues (id, title, description, status, created_at, updated_at, synced_at, boards, talla)
+                VALUES ('DPP-1','t','','Backlog','2026-01-01','2026-01-01','2026-01-01','9534','L')`).run();
+    const { runSync: run } = await import('./sync');
+    await run(db);
+    const row = db.prepare(`SELECT boards, talla FROM issues WHERE id='DPP-1'`).get() as any;
+    expect(row.boards).toBe('9534,9536');   // la corrida lo trae de ambos
+    expect(row.talla).toBe('L');            // y la talla sobrevive al conflicto
   });
 
   it('guarda el nombre de cada board en board_sync', async () => {

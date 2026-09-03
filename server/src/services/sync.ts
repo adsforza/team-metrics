@@ -22,10 +22,17 @@ export async function runSync(db: Database.Database): Promise<SyncResult> {
   try {
     const clients = createJiraClients();
     const syncedAt = new Date().toISOString();
-    const issueArrays = await Promise.all(clients.map(c => {
-      const row = db.prepare(`SELECT last_synced_at FROM board_sync WHERE board_id = ?`).get(c.boardId) as any;
-      return c.fetchIssues(row?.last_synced_at ?? undefined);
-    }));
+    const lastSyncs = clients.map(c => (db.prepare(
+      `SELECT last_synced_at FROM board_sync WHERE board_id = ?`
+    ).get(c.boardId) as any)?.last_synced_at as string | undefined);
+
+    // Si algun board es nuevo (sin marca previa), se resincroniza TODO completo.
+    // Con marcas divergentes un issue compartido vuelve desde un solo board y el
+    // ON CONFLICT le borra el otro. El full sync garantiza la precondicion que
+    // mergeIssuesByBoard necesita para armar la procedencia completa.
+    const hayBoardNuevo = lastSyncs.some(s => !s);
+    const issueArrays = await Promise.all(
+      clients.map((c, i) => c.fetchIssues(hayBoardNuevo ? undefined : lastSyncs[i])));
     const issues = mergeIssuesByBoard(issueArrays);
 
     // Download only: persist issues + transitions. Classification is decoupled

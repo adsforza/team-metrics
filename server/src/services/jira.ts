@@ -27,7 +27,11 @@ export class JiraClient {
         url: `${this.cfg.baseUrl}/rest/agile/1.0/board/${this.cfg.boardId}`,
         auth: { username: this.cfg.email, password: this.cfg.apiToken }, params: {},
       });
-      return (data as any)?.name ?? null;
+      // Guarda de tipo: si Jira devolviera `name` como objeto o array, better-sqlite3
+      // tira al bindearlo FUERA de este catch y voltea el sync entero por un dato
+      // cosmetico. El catch cubre el fallo de red; esto cubre el payload inesperado.
+      const name = (data as any)?.name;
+      return typeof name === 'string' ? name : null;
     } catch { return null; }   // el nombre es cosmetico: no debe romper el sync
   }
 }
