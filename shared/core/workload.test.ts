@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeWorkload } from './workload';
+import { computeWorkload, computeRequesterDetail } from './workload';
 import type { CoreIssueWorkload } from './types';
 
 const iss = (over: Partial<CoreIssueWorkload>): CoreIssueWorkload => ({
@@ -87,5 +87,68 @@ describe('computeWorkload', () => {
   it('sin rango cuenta todos los pedidos', () => {
     const r = computeWorkload([iss({ id: 'A', created_at: '2001-01-01T00:00:00.000Z' })], BOARDS, {});
     expect(r.totals.pedidos).toBe(1);
+  });
+});
+
+const NOW = new Date('2026-06-30T00:00:00.000Z');
+const dias = (n: number) => new Date(NOW.getTime() - n * 86400000).toISOString();
+
+const P = { board_id: 9534, requester: 'Groot', scope: 'pendientes' as const,
+            agingThresholdDays: 7, now: NOW };
+
+describe('computeRequesterDetail', () => {
+  it('filtra por board y solicitante, y ordena del mas viejo al mas nuevo', () => {
+    const r = computeRequesterDetail([
+      iss({ id: 'NUEVO', created_at: dias(3) }),
+      iss({ id: 'VIEJO', created_at: dias(90) }),
+      iss({ id: 'OTRO', requester: 'Snake', created_at: dias(50) }),
+      iss({ id: 'OTROBOARD', boards: [9536], created_at: dias(50) }),
+    ], P);
+    expect(r.issues.map(i => i.id)).toEqual(['VIEJO', 'NUEVO']);
+    expect(r.issues[0].edad_dias).toBe(90);
+  });
+
+  it('scope pendientes excluye lo cerrado; scope todos lo incluye segun el rango', () => {
+    const data = [iss({ id: 'A', status: 'Backlog', created_at: dias(5) }),
+                  iss({ id: 'B', status: 'Finalizada', created_at: dias(5) })];
+    expect(computeRequesterDetail(data, P).issues.map(i => i.id)).toEqual(['A']);
+    const todos = computeRequesterDetail(data, { ...P, scope: 'todos', from: '2026-06-01', to: '2026-06-30' });
+    expect(todos.issues.map(i => i.id).sort()).toEqual(['A', 'B']);
+  });
+
+  it('marca estancado lo que nunca arranco y supera el umbral', () => {
+    const r = computeRequesterDetail([
+      iss({ id: 'PARADO', status: 'Backlog', created_at: dias(30) }),
+      iss({ id: 'NUEVO', status: 'Backlog', created_at: dias(2) }),
+      iss({ id: 'ANDANDO', status: 'IN PROGRESS', created_at: dias(30) }),
+    ], P);
+    const by = Object.fromEntries(r.issues.map(i => [i.id, i.estancado]));
+    expect(by).toEqual({ PARADO: true, NUEVO: false, ANDANDO: false });
+    expect(r.resumen.estancados).toBe(1);
+  });
+
+  it('resume abiertos, P1, edad maxima y mediana', () => {
+    const r = computeRequesterDetail([
+      iss({ id: 'A', created_at: dias(10), priority: 'High (P1)' }),
+      iss({ id: 'B', created_at: dias(20), priority: 'Highest (P0)' }),
+      iss({ id: 'C', created_at: dias(30), priority: 'Low (P3)' }),
+      iss({ id: 'D', created_at: dias(40), priority: 'Mandatorio' }),
+    ], P);
+    expect(r.resumen.abiertos).toBe(4);
+    expect(r.resumen.p1).toBe(3);
+    expect(r.resumen.edad_max).toBe(40);
+    expect(r.resumen.edad_p50).toBe(25);
+  });
+
+  it('el bucket sin dato se pide con requester null', () => {
+    const r = computeRequesterDetail([iss({ id: 'A', requester: null, created_at: dias(5) })],
+      { ...P, requester: null });
+    expect(r.issues.map(i => i.id)).toEqual(['A']);
+  });
+
+  it('sin issues devuelve resumen en cero', () => {
+    const r = computeRequesterDetail([], P);
+    expect(r.issues).toEqual([]);
+    expect(r.resumen).toEqual({ abiertos: 0, estancados: 0, p1: 0, edad_max: 0, edad_p50: 0 });
   });
 });

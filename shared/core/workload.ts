@@ -1,5 +1,5 @@
 import { categorize } from './statusCategories';
-import type { CoreIssueWorkload } from './types';
+import type { CoreIssueWorkload, Talla } from './types';
 
 export interface WorkloadRequester { requester: string | null; pedidos: number; pendientes: number; }
 export interface WorkloadSquad {
@@ -81,4 +81,66 @@ export function computeWorkload(
   });
 
   return { squads, totals: { pedidos: totalPedidos, pendientes: totalPendientes, compartidos } };
+}
+
+export interface WorkloadIssue {
+  id: string; title: string; status: string;
+  assignee_id: string | null; talla: Talla | null; priority: string | null;
+  created_at: string; edad_dias: number; estancado: boolean;
+}
+export interface RequesterDetail {
+  issues: WorkloadIssue[];
+  resumen: { abiertos: number; estancados: number; p1: number; edad_max: number; edad_p50: number };
+}
+
+const MS_DAY = 86_400_000;
+const P1_PRIORITIES = ['Highest (P0)', 'High (P1)', 'Mandatorio'];
+
+function mediana(xs: number[]): number {
+  if (xs.length === 0) return 0;
+  const s = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2);
+}
+
+export function computeRequesterDetail(
+  issues: CoreIssueWorkload[],
+  params: {
+    board_id: number; requester: string | null;
+    scope: 'pendientes' | 'todos';
+    from?: string; to?: string;
+    agingThresholdDays: number; now: Date;
+  },
+): RequesterDetail {
+  const t = params.now.getTime();
+
+  const rows: WorkloadIssue[] = issues
+    .filter(i => i.boards.includes(params.board_id) && i.requester === params.requester)
+    .filter(i => params.scope === 'pendientes'
+      ? isPendiente(i.status)
+      : isPendiente(i.status) || enRango(i.created_at, params.from, params.to))
+    .map(i => {
+      const edad_dias = Math.floor((t - new Date(i.created_at).getTime()) / MS_DAY);
+      const cat = categorize(i.status);
+      const nuncaArranco = cat === 'todo' || cat === 'waiting';
+      return {
+        id: i.id, title: i.title, status: i.status,
+        assignee_id: i.assignee_id, talla: i.talla, priority: i.priority,
+        created_at: i.created_at, edad_dias,
+        estancado: nuncaArranco && edad_dias > params.agingThresholdDays,
+      };
+    })
+    .sort((a, b) => b.edad_dias - a.edad_dias || a.id.localeCompare(b.id));
+
+  const abiertosRows = rows.filter(r => isPendiente(r.status));
+  return {
+    issues: rows,
+    resumen: {
+      abiertos: abiertosRows.length,
+      estancados: rows.filter(r => r.estancado).length,
+      p1: rows.filter(r => r.priority !== null && P1_PRIORITIES.includes(r.priority)).length,
+      edad_max: rows.length ? Math.max(...rows.map(r => r.edad_dias)) : 0,
+      edad_p50: mediana(rows.map(r => r.edad_dias)),
+    },
+  };
 }
