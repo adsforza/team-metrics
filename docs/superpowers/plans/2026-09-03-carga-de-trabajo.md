@@ -397,7 +397,7 @@ export function computeWorkload(
 - [ ] **Step 4: Correr el test**
 
 Run: `cd shared/core && npx vitest run workload.test.ts`
-Expected: PASS, 9 tests.
+Expected: PASS, 10 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -567,7 +567,7 @@ export function computeRequesterDetail(
 - [ ] **Step 4: Correr el test**
 
 Run: `cd shared/core && npx vitest run workload.test.ts`
-Expected: PASS, 15 tests en total.
+Expected: PASS, 16 tests en total (10 de la Task 2 + 6 nuevos).
 
 - [ ] **Step 5: Commit**
 
