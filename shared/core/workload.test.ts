@@ -44,6 +44,15 @@ describe('computeWorkload', () => {
     expect(r.totals.compartidos).toBe(1);
   });
 
+  it('no cuenta como compartido un issue que no se muestra en ningun squad', () => {
+    // Ticket viejo y cerrado presente en los dos boards: ni pedido (fuera de rango)
+    // ni pendiente (done). No debe inflar compartidos, porque no hay fila que explicar.
+    const r = computeWorkload([iss({ id: 'A', boards: [9534, 9536],
+      status: 'Finalizada', created_at: '2020-01-01T00:00:00.000Z' })], BOARDS, RANGE);
+    expect(r.totals).toEqual({ pedidos: 0, pendientes: 0, compartidos: 0 });
+    expect(r.squads.every(s => s.requesters.length === 0)).toBe(true);
+  });
+
   it('agrupa el requester nulo en un bucket propio', () => {
     const r = computeWorkload([
       iss({ id: 'A', requester: null }),
