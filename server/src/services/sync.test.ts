@@ -13,12 +13,16 @@ vi.mock('./jira', () => ({
       description: 'Some description',
       status: 'In Progress',
       assignee: { id: 'u1', display_name: 'User One', email: 'u@t.com', avatar_url: null },
+      requester: null,
+      priority: null,
+      boards: [1],
       created_at: '2026-01-01T00:00:00.000Z',
       updated_at: '2026-01-02T00:00:00.000Z',
       transitions: [
         { from_status: 'To Do', to_status: 'In Progress', transitioned_at: '2026-01-02T00:00:00.000Z' },
       ],
     }]),
+    fetchBoardName: vi.fn().mockResolvedValue('Board Uno'),
   }],
 }));
 
@@ -70,5 +74,54 @@ describe('runSync', () => {
     expect(log.synced_count).toBe(1);
     expect(log.error).toBeNull();
     expect(log.finished_at).toBeTruthy();
+  });
+});
+
+const issueEn = (id: string, boards: number[]) => ({
+  id, title: 'T', description: '', status: 'Backlog', assignee: null,
+  requester: 'Tony Stack', priority: 'High (P1)', boards,
+  created_at: '2026-06-01T00:00:00.000Z', updated_at: '2026-06-01T00:00:00.000Z',
+  transitions: [],
+});
+
+describe('runSync — carga de trabajo', () => {
+  let db: Database.Database;
+
+  beforeEach(async () => {
+    db = new Database(':memory:');
+    applySchema(db);
+    vi.resetModules();
+    // DPP-1 esta en los dos boards; DPP-2 solo en 9536.
+    vi.doMock('./jira', () => ({
+      createJiraClients: () => [
+        { boardId: 9534,
+          fetchIssues: vi.fn().mockResolvedValue([issueEn('DPP-1', [9534])]),
+          fetchBoardName: vi.fn().mockResolvedValue('Black Team Infra') },
+        { boardId: 9536,
+          fetchIssues: vi.fn().mockResolvedValue([issueEn('DPP-1', [9536]), issueEn('DPP-2', [9536])]),
+          fetchBoardName: vi.fn().mockResolvedValue('Blue Team Infra') },
+      ],
+    }));
+  });
+
+  it('persiste requester, priority y la union de boards', async () => {
+    const { runSync: run } = await import('./sync');
+    await run(db);
+    const a = db.prepare(`SELECT requester, priority, boards FROM issues WHERE id='DPP-1'`).get() as any;
+    expect(a.requester).toBe('Tony Stack');
+    expect(a.priority).toBe('High (P1)');
+    expect(a.boards.split(',').map(Number).sort((x: number, y: number) => x - y)).toEqual([9534, 9536]);
+    const b = db.prepare(`SELECT boards FROM issues WHERE id='DPP-2'`).get() as any;
+    expect(b.boards).toBe('9536');
+  });
+
+  it('guarda el nombre de cada board en board_sync', async () => {
+    const { runSync: run } = await import('./sync');
+    await run(db);
+    const rows = db.prepare(`SELECT board_id, name FROM board_sync ORDER BY board_id`).all() as any[];
+    expect(rows).toEqual([
+      { board_id: 9534, name: 'Black Team Infra' },
+      { board_id: 9536, name: 'Blue Team Infra' },
+    ]);
   });
 });

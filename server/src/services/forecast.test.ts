@@ -4,7 +4,8 @@ import { applySchema } from '../db/schema';
 import { dailyThroughput } from './forecast';
 
 function seedDone(db: Database.Database, id: string, doneAt: string) {
-  db.prepare(`INSERT INTO issues VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+  db.prepare(`INSERT INTO issues (id, title, description, status, assignee_id, talla, talla_confidence,
+    created_at, updated_at, synced_at, last_transition_at, talla_updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     id, `I ${id}`, '', 'Done', null, 'M', 0.9, '2026-01-01T00:00:00Z', doneAt, '2026-06-25T00:00:00Z', doneAt, null,
   );
   db.prepare(`INSERT INTO transitions (issue_id, from_status, to_status, transitioned_at) VALUES (?,?,?,?)`)
@@ -99,7 +100,8 @@ describe('histogram', () => {
 });
 
 function seedActive(db: Database.Database, id: string) {
-  db.prepare(`INSERT INTO issues VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+  db.prepare(`INSERT INTO issues (id, title, description, status, assignee_id, talla, talla_confidence,
+    created_at, updated_at, synced_at, last_transition_at, talla_updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     id, `I ${id}`, '', 'In Progress', null, 'M', 0.9, '2026-06-01T00:00:00Z', '2026-06-20T00:00:00Z', '2026-06-25T00:00:00Z', '2026-06-20T00:00:00Z', null,
   );
 }

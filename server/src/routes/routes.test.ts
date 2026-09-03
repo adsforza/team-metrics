@@ -7,7 +7,7 @@ import { applySchema } from '../db/schema';
 const mockDb = new Database(':memory:');
 applySchema(mockDb);
 mockDb.prepare(`INSERT INTO team_members VALUES ('u1','Ana G','ana@t.com',null)`).run();
-mockDb.prepare(`INSERT INTO issues VALUES ('OPS-1','Fix login','desc','In Progress','u1','M',0.9,'2026-05-01T00:00:00Z','2026-05-04T00:00:00Z','2026-06-01T00:00:00Z','2026-05-01T00:00:00Z',NULL)`).run();
+mockDb.prepare(`INSERT INTO issues (id, title, description, status, assignee_id, talla, talla_confidence, created_at, updated_at, synced_at, last_transition_at, talla_updated_at) VALUES ('OPS-1','Fix login','desc','In Progress','u1','M',0.9,'2026-05-01T00:00:00Z','2026-05-04T00:00:00Z','2026-06-01T00:00:00Z','2026-05-01T00:00:00Z',NULL)`).run();
 
 vi.mock('../db/index', () => ({ getDb: () => mockDb, initDb: () => mockDb }));
 vi.mock('../services/sync', () => ({ startSyncJob: vi.fn(), runSync: vi.fn().mockResolvedValue({ synced_count: 0, classified_count: 0 }) }));
@@ -117,8 +117,8 @@ describe('GET /api/metrics/comparison', () => {
 describe('POST /api/tallas', () => {
   beforeAll(() => {
     // TAL-1 sin talla (debe llenarse); TAL-2 ya clasificado (no debe pisarse)
-    mockDb.prepare(`INSERT INTO issues VALUES ('TAL-1','a','','Done','u1',NULL,NULL,'2026-05-01T00:00:00Z','2026-05-02T00:00:00Z','2026-05-02T00:00:00Z','2026-05-02T00:00:00Z',NULL)`).run();
-    mockDb.prepare(`INSERT INTO issues VALUES ('TAL-2','b','','Done','u1','L',0.7,'2026-05-01T00:00:00Z','2026-05-02T00:00:00Z','2026-05-02T00:00:00Z','2026-05-02T00:00:00Z','2026-05-02T00:00:00Z')`).run();
+    mockDb.prepare(`INSERT INTO issues (id, title, description, status, assignee_id, talla, talla_confidence, created_at, updated_at, synced_at, last_transition_at, talla_updated_at) VALUES ('TAL-1','a','','Done','u1',NULL,NULL,'2026-05-01T00:00:00Z','2026-05-02T00:00:00Z','2026-05-02T00:00:00Z','2026-05-02T00:00:00Z',NULL)`).run();
+    mockDb.prepare(`INSERT INTO issues (id, title, description, status, assignee_id, talla, talla_confidence, created_at, updated_at, synced_at, last_transition_at, talla_updated_at) VALUES ('TAL-2','b','','Done','u1','L',0.7,'2026-05-01T00:00:00Z','2026-05-02T00:00:00Z','2026-05-02T00:00:00Z','2026-05-02T00:00:00Z','2026-05-02T00:00:00Z')`).run();
   });
 
   it('llena solo los huecos y no pisa tallas existentes', async () => {
@@ -136,7 +136,7 @@ describe('POST /api/tallas', () => {
   });
 
   it('ignora items con talla inválida', async () => {
-    mockDb.prepare(`INSERT INTO issues VALUES ('TAL-3','c','','Done','u1',NULL,NULL,'2026-05-01T00:00:00Z','2026-05-02T00:00:00Z','2026-05-02T00:00:00Z','2026-05-02T00:00:00Z',NULL)`).run();
+    mockDb.prepare(`INSERT INTO issues (id, title, description, status, assignee_id, talla, talla_confidence, created_at, updated_at, synced_at, last_transition_at, talla_updated_at) VALUES ('TAL-3','c','','Done','u1',NULL,NULL,'2026-05-01T00:00:00Z','2026-05-02T00:00:00Z','2026-05-02T00:00:00Z','2026-05-02T00:00:00Z',NULL)`).run();
     const res = await request(app).post('/api/tallas').send([{ id: 'TAL-3', talla: 'XXL', confidence: 0.9 }]);
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ updated: 0 });
@@ -156,8 +156,8 @@ describe('POST /api/tallas', () => {
 
 describe('GET /api/raw', () => {
   beforeAll(() => {
-    mockDb.prepare(`INSERT INTO issues VALUES ('RAW-OLD','old','','Done','u1','S',0.9,'2026-01-01T00:00:00Z','2026-01-10T00:00:00Z','2026-01-10T00:00:00Z','2026-01-10T00:00:00Z',NULL)`).run();
-    mockDb.prepare(`INSERT INTO issues VALUES ('RAW-NEW','new','','In Progress','u1',NULL,NULL,'2026-06-01T00:00:00Z','2026-06-20T00:00:00Z','2026-06-20T00:00:00Z','2026-06-20T00:00:00Z',NULL)`).run();
+    mockDb.prepare(`INSERT INTO issues (id, title, description, status, assignee_id, talla, talla_confidence, created_at, updated_at, synced_at, last_transition_at, talla_updated_at) VALUES ('RAW-OLD','old','','Done','u1','S',0.9,'2026-01-01T00:00:00Z','2026-01-10T00:00:00Z','2026-01-10T00:00:00Z','2026-01-10T00:00:00Z',NULL)`).run();
+    mockDb.prepare(`INSERT INTO issues (id, title, description, status, assignee_id, talla, talla_confidence, created_at, updated_at, synced_at, last_transition_at, talla_updated_at) VALUES ('RAW-NEW','new','','In Progress','u1',NULL,NULL,'2026-06-01T00:00:00Z','2026-06-20T00:00:00Z','2026-06-20T00:00:00Z','2026-06-20T00:00:00Z',NULL)`).run();
     mockDb.prepare(`INSERT INTO transitions (issue_id,from_status,to_status,transitioned_at) VALUES ('RAW-NEW','To Do','In Progress','2026-06-05T00:00:00Z')`).run();
     mockDb.prepare(`INSERT INTO sync_log (started_at,finished_at,synced_count,classified_count,error) VALUES ('2026-06-21T00:00:00Z','2026-06-21T00:05:00Z',10,5,NULL)`).run();
   });

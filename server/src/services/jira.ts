@@ -21,6 +21,15 @@ export class JiraClient {
   fetchIssues(updatedSince?: string): Promise<JiraIssueRaw[]> {
     return fetchBoardIssues(this.cfg, axiosHttp, updatedSince);
   }
+  async fetchBoardName(): Promise<string | null> {
+    try {
+      const data = await axiosHttp({
+        url: `${this.cfg.baseUrl}/rest/agile/1.0/board/${this.cfg.boardId}`,
+        auth: { username: this.cfg.email, password: this.cfg.apiToken }, params: {},
+      });
+      return (data as any)?.name ?? null;
+    } catch { return null; }   // el nombre es cosmetico: no debe romper el sync
+  }
 }
 
 export function createJiraClients(): JiraClient[] {
