@@ -669,9 +669,34 @@ describe('runSync — carga de trabajo', () => {
     const a = db.prepare(`SELECT requester, priority, boards FROM issues WHERE id='DPP-1'`).get() as any;
     expect(a.requester).toBe('Tony Stack');
     expect(a.priority).toBe('High (P1)');
-    expect(a.boards.split(',').map(Number).sort((x: number, y: number) => x - y)).toEqual([9534, 9536]);
+    // String exacto, no re-ordenado: asi el test detecta si se dejara de ordenar.
+    expect(a.boards).toBe('9534,9536');
     const b = db.prepare(`SELECT boards FROM issues WHERE id='DPP-2'`).get() as any;
     expect(b.boards).toBe('9536');
+  });
+
+  it('un board nuevo fuerza sync completo de todos los boards', async () => {
+    // 9534 ya venia sincronizando; 9536 se agrega recien ahora. Si 9534 fuera
+    // incremental, un issue compartido sin cambios volveria solo desde 9536 y el
+    // ON CONFLICT le borraria el 9534.
+    db.prepare(`INSERT INTO board_sync (board_id, last_synced_at) VALUES (9534, '2026-01-01T00:00:00.000Z')`).run();
+    const { runSync: run } = await import('./sync');
+    await run(db);
+    const { createJiraClients } = await import('./jira');
+    for (const c of createJiraClients()) {
+      expect(c.fetchIssues).toHaveBeenCalledWith(undefined);   // full sync, no incremental
+    }
+  });
+
+  it('el ON CONFLICT refleja la membresia de la corrida, no la acumulada', async () => {
+    // Ejerce la rama ON CONFLICT, que el test de arriba nunca toca (base fresca = INSERT).
+    db.prepare(`INSERT INTO issues (id, title, description, status, created_at, updated_at, synced_at, boards, talla)
+                VALUES ('DPP-1','t','','Backlog','2026-01-01','2026-01-01','2026-01-01','9534','L')`).run();
+    const { runSync: run } = await import('./sync');
+    await run(db);
+    const row = db.prepare(`SELECT boards, talla FROM issues WHERE id='DPP-1'`).get() as any;
+    expect(row.boards).toBe('9534,9536');   // la corrida lo trae de ambos
+    expect(row.talla).toBe('L');            // y la talla sobrevive al conflicto
   });
 
   it('guarda el nombre de cada board en board_sync', async () => {
@@ -722,7 +747,33 @@ En `server/src/services/sync.ts`, reemplazar `const issues = issueArrays.flat();
 
 con el import `import { mergeIssuesByBoard } from '../../../shared/core/jira';`.
 
-En el `INSERT ... ON CONFLICT` de issues, agregar las tres columnas. `boards` se une con lo ya guardado en vez de pisarse:
+**Garantizar que las marcas de sync no diverjan.** El `ON CONFLICT` pisa `boards` con lo
+que trae la corrida (ver más abajo), y eso es correcto **solo si** cada issue lo ven todos
+sus boards en la misma corrida. Como `last_synced_at` es por board, un board recién
+agregado a `JIRA_BOARD_IDS` baja el histórico completo mientras los viejos bajan solo lo
+modificado: un issue compartido y sin cambios recientes volvería desde un solo board y
+perdería el otro. Es justo el escenario de rollout de esta feature.
+
+Reemplazar el bloque de fetch de `sync.ts` por:
+
+```ts
+    const lastSyncs = clients.map(c => (db.prepare(
+      `SELECT last_synced_at FROM board_sync WHERE board_id = ?`
+    ).get(c.boardId) as any)?.last_synced_at as string | undefined);
+
+    // Si algun board es nuevo (sin marca previa), se resincroniza TODO completo.
+    // Con marcas divergentes un issue compartido vuelve desde un solo board y el
+    // ON CONFLICT le borra el otro. El full sync garantiza la precondicion que
+    // mergeIssuesByBoard necesita para armar la procedencia completa.
+    const hayBoardNuevo = lastSyncs.some(s => !s);
+    const issueArrays = await Promise.all(
+      clients.map((c, i) => c.fetchIssues(hayBoardNuevo ? undefined : lastSyncs[i])));
+```
+
+En el `INSERT ... ON CONFLICT` de issues, agregar las tres columnas. `boards` se pisa con
+el valor de la corrida — con la garantía de arriba eso siempre refleja la membresía real,
+y además auto-limpia cuando un issue sale de un board (mergear dejaría un squad fantasma
+para siempre, sin mecanismo de expiración):
 
 ```ts
         db.prepare(`
@@ -755,6 +806,11 @@ Guardar el nombre del board. En `server/src/services/jira.ts`, agregar a `JiraCl
         auth: { username: this.cfg.email, password: this.cfg.apiToken }, params: {},
       });
       return (data as any)?.name ?? null;
+      // Guarda de tipo: si Jira devolviera `name` como objeto o array, better-sqlite3
+      // tira al bindearlo FUERA de este catch y voltea el sync entero por un dato
+      // cosmetico. El catch cubre el fallo de red; esto cubre el payload inesperado.
+      const name = (data as any)?.name;
+      return typeof name === 'string' ? name : null;
     } catch { return null; }   // el nombre es cosmetico: no debe romper el sync
   }
 ```
