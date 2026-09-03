@@ -475,6 +475,17 @@ describe('computeRequesterDetail', () => {
     expect(r.resumen.edad_p50).toBe(25);
   });
 
+  it('en scope todos, el resumen describe solo lo abierto, no lo cerrado', () => {
+    const r = computeRequesterDetail([
+      iss({ id: 'ABIERTO', status: 'Backlog', created_at: dias(5), priority: 'Low (P3)' }),
+      iss({ id: 'CERRADO', status: 'Finalizada', created_at: dias(300), priority: 'High (P1)' }),
+    ], { ...P, scope: 'todos', from: '2020-01-01', to: '2026-06-30' });
+    expect(r.issues.map(i => i.id)).toEqual(['CERRADO', 'ABIERTO']);  // la lista si los muestra
+    expect(r.resumen.abiertos).toBe(1);
+    expect(r.resumen.p1).toBe(0);        // el P1 esta cerrado: no se debe nada
+    expect(r.resumen.edad_max).toBe(5);  // 5d del abierto, no 300d del cerrado
+  });
+
   it('el bucket sin dato se pide con requester null', () => {
     const r = computeRequesterDetail([iss({ id: 'A', requester: null, created_at: dias(5) })],
       { ...P, requester: null });
@@ -500,6 +511,7 @@ Agregar a `shared/core/workload.ts`:
 
 ```ts
 import type { Talla } from './types';
+import { median } from './stats';   // reusar el p50 que ya usa cycle_time_p50
 
 export interface WorkloadIssue {
   id: string; title: string; status: string;
@@ -513,13 +525,6 @@ export interface RequesterDetail {
 
 const MS_DAY = 86_400_000;
 const P1_PRIORITIES = ['Highest (P0)', 'High (P1)', 'Mandatorio'];
-
-function mediana(xs: number[]): number {
-  if (xs.length === 0) return 0;
-  const s = [...xs].sort((a, b) => a - b);
-  const m = Math.floor(s.length / 2);
-  return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2);
-}
 
 export function computeRequesterDetail(
   issues: CoreIssueWorkload[],
@@ -550,15 +555,20 @@ export function computeRequesterDetail(
     })
     .sort((a, b) => b.edad_dias - a.edad_dias || a.id.localeCompare(b.id));
 
-  const abiertosRows = rows.filter(r => isPendiente(r.status));
+  const abiertos = rows.filter(r => isPendiente(r.status));
   return {
     issues: rows,
+    // El resumen describe SIEMPRE lo pendiente, aunque en scope 'todos' la lista
+    // incluya cerrados: es un diagnostico de lo que se sigue debiendo. Calcularlo
+    // sobre `rows` haria que la tira diga "1 abierto - 1 es P1 - mas viejo 300d"
+    // cuando el unico abierto tiene 5 dias y no es P1.
     resumen: {
-      abiertos: abiertosRows.length,
-      estancados: rows.filter(r => r.estancado).length,
-      p1: rows.filter(r => r.priority !== null && P1_PRIORITIES.includes(r.priority)).length,
-      edad_max: rows.length ? Math.max(...rows.map(r => r.edad_dias)) : 0,
-      edad_p50: mediana(rows.map(r => r.edad_dias)),
+      abiertos: abiertos.length,
+      estancados: abiertos.filter(r => r.estancado).length,
+      p1: abiertos.filter(r => r.priority !== null && P1_PRIORITIES.includes(r.priority)).length,
+      edad_max: abiertos.reduce((m, r) => Math.max(m, r.edad_dias), 0),
+      // Sin redondear: misma definicion de p50 que cycle_time_p50. La UI formatea.
+      edad_p50: median(abiertos.map(r => r.edad_dias)) ?? 0,
     },
   };
 }
