@@ -1,4 +1,5 @@
 import { categorize } from './statusCategories';
+import { median } from './stats'; // reusar el p50 que ya usa cycle_time_p50
 import type { CoreIssueWorkload, Talla } from './types';
 
 export interface WorkloadRequester { requester: string | null; pedidos: number; pendientes: number; }
@@ -96,13 +97,6 @@ export interface RequesterDetail {
 const MS_DAY = 86_400_000;
 const P1_PRIORITIES = ['Highest (P0)', 'High (P1)', 'Mandatorio'];
 
-function mediana(xs: number[]): number {
-  if (xs.length === 0) return 0;
-  const s = [...xs].sort((a, b) => a - b);
-  const m = Math.floor(s.length / 2);
-  return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2);
-}
-
 export function computeRequesterDetail(
   issues: CoreIssueWorkload[],
   params: {
@@ -132,15 +126,20 @@ export function computeRequesterDetail(
     })
     .sort((a, b) => b.edad_dias - a.edad_dias || a.id.localeCompare(b.id));
 
-  const abiertosRows = rows.filter(r => isPendiente(r.status));
+  const abiertos = rows.filter(r => isPendiente(r.status));
   return {
     issues: rows,
+    // El resumen describe SIEMPRE lo pendiente, aunque en scope 'todos' la lista
+    // incluya cerrados: es un diagnostico de lo que se sigue debiendo. Calcularlo
+    // sobre `rows` haria que la tira diga "1 abierto - 1 es P1 - mas viejo 300d"
+    // cuando el unico abierto tiene 5 dias y no es P1.
     resumen: {
-      abiertos: abiertosRows.length,
-      estancados: rows.filter(r => r.estancado).length,
-      p1: rows.filter(r => r.priority !== null && P1_PRIORITIES.includes(r.priority)).length,
-      edad_max: rows.length ? Math.max(...rows.map(r => r.edad_dias)) : 0,
-      edad_p50: mediana(rows.map(r => r.edad_dias)),
+      abiertos: abiertos.length,
+      estancados: abiertos.filter(r => r.estancado).length,
+      p1: abiertos.filter(r => r.priority !== null && P1_PRIORITIES.includes(r.priority)).length,
+      edad_max: abiertos.reduce((m, r) => Math.max(m, r.edad_dias), 0),
+      // Sin redondear: misma definicion de p50 que cycle_time_p50. La UI formatea.
+      edad_p50: median(abiertos.map(r => r.edad_dias)) ?? 0,
     },
   };
 }

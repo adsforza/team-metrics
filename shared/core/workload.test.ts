@@ -140,6 +140,17 @@ describe('computeRequesterDetail', () => {
     expect(r.resumen.edad_p50).toBe(25);
   });
 
+  it('en scope todos, el resumen describe solo lo abierto, no lo cerrado', () => {
+    const r = computeRequesterDetail([
+      iss({ id: 'ABIERTO', status: 'Backlog', created_at: dias(5), priority: 'Low (P3)' }),
+      iss({ id: 'CERRADO', status: 'Finalizada', created_at: dias(300), priority: 'High (P1)' }),
+    ], { ...P, scope: 'todos', from: '2020-01-01', to: '2026-06-30' });
+    expect(r.issues.map(i => i.id)).toEqual(['CERRADO', 'ABIERTO']);  // la lista si los muestra
+    expect(r.resumen.abiertos).toBe(1);
+    expect(r.resumen.p1).toBe(0);        // el P1 esta cerrado: no se debe nada
+    expect(r.resumen.edad_max).toBe(5);  // 5d del abierto, no 300d del cerrado
+  });
+
   it('el bucket sin dato se pide con requester null', () => {
     const r = computeRequesterDetail([iss({ id: 'A', requester: null, created_at: dias(5) })],
       { ...P, requester: null });
