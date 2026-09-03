@@ -1197,15 +1197,90 @@ En `mobile/app/(tabs)/_layout.tsx`, entre `equipo` e `issues`:
       <Tabs.Screen name="carga" options={{ title: 'Carga', tabBarIcon: tabIcon('pie-chart') }} />
 ```
 
-- [ ] **Step 5: Verificar que compila y que la suite sigue verde**
+- [ ] **Step 5: Escribir los tests de `SquadCard`**
+
+`@testing-library/react-native@14` ya es dependencia del proyecto y el preset de jest es
+`jest-expo`: no hay que instalar nada. Crear `mobile/__tests__/SquadCard.test.tsx`:
+
+```tsx
+import React from 'react';
+import { render, fireEvent, screen } from '@testing-library/react-native';
+import { SquadCard } from '../components/SquadCard';
+
+const squad = {
+  board_id: 9534, name: 'Black Team Infra', pedidos: 518, pendientes: 70,
+  requesters: [
+    { requester: 'Groot', pedidos: 103, pendientes: 5 },
+    { requester: 'Camel Case', pedidos: 103, pendientes: 1 },
+    { requester: null, pedidos: 82, pendientes: 31 },
+    { requester: 'Devengers', pedidos: 39, pendientes: 0 },
+    { requester: 'La Teconeta', pedidos: 30, pendientes: 0 },
+  ],
+};
+
+const setup = (onPress = jest.fn()) => {
+  render(<SquadCard squad={squad} rangeLabel="90d" onPressRequester={onPress} />);
+  return onPress;
+};
+
+describe('SquadCard', () => {
+  it('muestra el nombre del squad y los dos totales', () => {
+    setup();
+    expect(screen.getByText('Black Team Infra')).toBeTruthy();
+    expect(screen.getByText('518')).toBeTruthy();
+    expect(screen.getByText('70')).toBeTruthy();
+  });
+
+  it('muestra solo el top 3 y agrupa el resto', () => {
+    setup();
+    expect(screen.getByText('Groot')).toBeTruthy();
+    expect(screen.queryByText('Devengers')).toBeNull();
+    expect(screen.getByText('Otros 2 equipos')).toBeTruthy();
+  });
+
+  it('despliega el resto al tocar "Otros N equipos"', () => {
+    setup();
+    fireEvent.press(screen.getByText('Otros 2 equipos'));
+    expect(screen.getByText('Devengers')).toBeTruthy();
+    expect(screen.getByText('La Teconeta')).toBeTruthy();
+  });
+
+  it('renderiza el bucket nulo como "Sin dato"', () => {
+    setup();
+    expect(screen.getByText('Sin dato')).toBeTruthy();
+  });
+
+  it('avisa que solicitante se toco, con null para el bucket sin dato', () => {
+    const onPress = setup();
+    fireEvent.press(screen.getByText('Groot'));
+    expect(onPress).toHaveBeenCalledWith('Groot');
+    fireEvent.press(screen.getByText('Sin dato'));
+    expect(onPress).toHaveBeenCalledWith(null);
+  });
+
+  it('sin solicitantes no rompe ni muestra la fila de otros', () => {
+    render(<SquadCard squad={{ ...squad, requesters: [] }} rangeLabel="90d" onPressRequester={jest.fn()} />);
+    expect(screen.queryByText(/Otros/)).toBeNull();
+  });
+});
+```
+
+- [ ] **Step 6: Correr los tests para verificar que fallan, después implementar hasta el verde**
+
+Run: `cd mobile && npx jest __tests__/SquadCard.test.tsx`
+Expected primero: FAIL (el componente aún no exporta lo que el test espera). Ajustar
+`SquadCard` hasta que pase — sin cambiar las aserciones para acomodar la implementación.
+
+- [ ] **Step 7: Verificar tipos y suite completa**
 
 Run: `cd mobile && npx tsc --noEmit && npx jest`
-Expected: sin errores de tipos, tests en verde.
+Expected: sin errores de tipos, toda la suite en verde.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add mobile/hooks/useWorkload.ts mobile/components/SquadCard.tsx \
+        mobile/__tests__/SquadCard.test.tsx \
         "mobile/app/(tabs)/carga.tsx" "mobile/app/(tabs)/_layout.tsx"
 git commit -m "feat(mobile): solapa Carga con tarjeta por squad y cola larga colapsable"
 ```
@@ -1260,16 +1335,77 @@ export async function readWorkloadIssues(db: SQLite.SQLiteDatabase): Promise<Cor
 - Tira de resumen: `{abiertos} abiertos · {estancados} sin arrancar hace +{T}d · {p1} son P1 · más viejo {edad_max}d · mediana {edad_p50}d`. Omitir los tramos cuyo valor sea 0.
 - `FlatList` de `WorkloadIssueRow`, ya ordenada por antigüedad desde el core.
 
-- [ ] **Step 5: Verificar**
+- [ ] **Step 5: Escribir los tests de `WorkloadIssueRow`**
+
+Crear `mobile/__tests__/WorkloadIssueRow.test.tsx`. Lo que se testea es la lógica que
+puede romperse en silencio: el umbral de color y el chip condicional de talla.
+
+```tsx
+import React from 'react';
+import { render, screen } from '@testing-library/react-native';
+import { WorkloadIssueRow } from '../components/WorkloadIssueRow';
+import { Colors } from '../lib/theme';
+
+const issue = (over: any = {}) => ({
+  id: 'DPP-1', title: 'Crear el Api-Gateway', status: 'Ready for Development',
+  assignee_id: null, talla: 'M', priority: 'High (P1)',
+  created_at: '2026-06-01T00:00:00.000Z', edad_dias: 5, estancado: false, ...over,
+});
+
+const colorDeLaEdad = (edad_dias: number) => {
+  render(<WorkloadIssueRow issue={issue({ edad_dias })} assigneeName="Fede" />);
+  return screen.getByTestId('edad').props.style.color;
+};
+
+describe('WorkloadIssueRow', () => {
+  it('muestra key, titulo y responsable', () => {
+    render(<WorkloadIssueRow issue={issue()} assigneeName="Fede" />);
+    expect(screen.getByText('DPP-1')).toBeTruthy();
+    expect(screen.getByText('Crear el Api-Gateway')).toBeTruthy();
+    expect(screen.getByText('Fede')).toBeTruthy();
+  });
+
+  it('colorea la edad por umbral: gris <=14d, naranja 15-56d, rojo +56d', () => {
+    expect(colorDeLaEdad(14)).toBe(Colors.textMuted);
+    expect(colorDeLaEdad(15)).toBe(Colors.warning);
+    expect(colorDeLaEdad(56)).toBe(Colors.warning);
+    expect(colorDeLaEdad(57)).toBe(Colors.error);
+  });
+
+  it('omite el chip de talla cuando el issue no esta clasificado', () => {
+    render(<WorkloadIssueRow issue={issue({ talla: 'L' })} assigneeName="Fede" />);
+    expect(screen.getByText('L')).toBeTruthy();
+    screen.unmount();
+    render(<WorkloadIssueRow issue={issue({ talla: null })} assigneeName="Fede" />);
+    expect(screen.queryByTestId('talla')).toBeNull();
+  });
+
+  it('sin responsable muestra "sin asignar"', () => {
+    render(<WorkloadIssueRow issue={issue()} assigneeName={null} />);
+    expect(screen.getByText('sin asignar')).toBeTruthy();
+  });
+});
+```
+
+El componente debe exponer `testID="edad"` en el texto de la antigüedad y `testID="talla"`
+en el chip de talla para que estas aserciones funcionen.
+
+- [ ] **Step 6: Correr los tests para verificar que fallan, después implementar hasta el verde**
+
+Run: `cd mobile && npx jest __tests__/WorkloadIssueRow.test.tsx`
+Expected primero: FAIL. Implementar hasta el verde sin relajar las aserciones.
+
+- [ ] **Step 7: Verificar tipos y suite completa**
 
 Run: `cd mobile && npx tsc --noEmit && npx jest`
-Expected: sin errores, tests en verde.
+Expected: sin errores, toda la suite en verde.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add "mobile/app/requester" mobile/hooks/useRequesterDetail.ts \
-        mobile/components/WorkloadIssueRow.tsx mobile/lib/db.ts
+        mobile/components/WorkloadIssueRow.tsx mobile/__tests__/WorkloadIssueRow.test.tsx \
+        mobile/lib/db.ts
 git commit -m "feat(mobile): drill-down de solicitante con resumen y orden por antiguedad"
 ```
 
