@@ -186,6 +186,41 @@ describe('GET /api/raw', () => {
   });
 });
 
+describe('GET /api/workload', () => {
+  it('devuelve squads con sus solicitantes', async () => {
+    const res = await request(app).get('/api/workload?from=2026-06-01&to=2026-06-30');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.squads)).toBe(true);
+    expect(res.body.totals).toHaveProperty('compartidos');
+  });
+
+  it('un issue con boards NULL en la base no rompe el endpoint', async () => {
+    mockDb.prepare(`INSERT INTO board_sync (board_id, last_synced_at, name) VALUES (9534, '2026-06-01T00:00:00Z', 'Squad Groot')`).run();
+    mockDb.prepare(`INSERT INTO issues (id, title, description, status, assignee_id, talla, talla_confidence, created_at, updated_at, synced_at, last_transition_at, talla_updated_at, requester, boards, priority)
+      VALUES ('WL-NULLBOARDS','sin boards','','In Progress','u1',NULL,NULL,'2026-06-10T00:00:00Z','2026-06-10T00:00:00Z','2026-06-10T00:00:00Z','2026-06-10T00:00:00Z',NULL,'Groot',NULL,NULL)`).run();
+    const res = await request(app).get('/api/workload?from=2026-06-01&to=2026-06-30');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.squads)).toBe(true);
+    // El issue con boards NULL se parsea como [] y no pertenece a ningun squad conocido.
+    const groot = res.body.squads.find((s: any) => s.board_id === 9534);
+    expect(groot).toBeDefined();
+    expect(groot.requesters.some((r: any) => r.requester === 'Groot')).toBe(false);
+  });
+});
+
+describe('GET /api/workload/detail', () => {
+  it('filtra por board y solicitante', async () => {
+    const res = await request(app).get('/api/workload/detail?board_id=9534&requester=Groot&scope=pendientes');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.issues)).toBe(true);
+    expect(res.body.resumen).toHaveProperty('estancados');
+  });
+
+  it('sin board_id responde 400', async () => {
+    expect((await request(app).get('/api/workload/detail')).status).toBe(400);
+  });
+});
+
 describe('talla_updated_at (propagación de tallas por delta)', () => {
   it('POST /api/tallas setea talla_updated_at al llenar una talla', async () => {
     mockDb.prepare(`INSERT INTO issues (id,title,description,status,assignee_id,talla,talla_confidence,created_at,updated_at,synced_at,last_transition_at)
