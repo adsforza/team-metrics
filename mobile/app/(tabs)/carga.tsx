@@ -6,6 +6,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { SquadCard } from '../../components/SquadCard';
 import { useWorkload } from '../../hooks/useWorkload';
 import { useFilterStore } from '../../store/filterStore';
+import { encodeRequesterSegment } from '../../lib/workloadView';
 
 export default function CargaScreen() {
   const { timeRange } = useFilterStore();
@@ -22,11 +23,7 @@ export default function CargaScreen() {
   }
 
   const goToRequester = (boardId: number, requester: string | null) => {
-    // `__null__` es el literal que la pantalla de detalle espera para el bucket
-    // "Sin dato". Las dos puntas tienen que usar el mismo o el drill-down de ese
-    // bucket falla en silencio.
-    const segment = requester !== null ? encodeURIComponent(requester) : '__null__';
-    router.push(`/requester/${boardId}/${segment}` as never);
+    router.push(`/requester/${boardId}/${encodeRequesterSegment(requester)}` as never);
   };
 
   return (

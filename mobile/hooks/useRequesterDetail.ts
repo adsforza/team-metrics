@@ -1,11 +1,46 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getDb, readWorkloadIssues } from '../lib/db';
+import { getDb, readWorkloadIssues, listBoardSync, loadCoreMembers } from '../lib/db';
 import { useSyncStore } from '../store/syncStore';
 import { computeRequesterDetail } from '@teammetrics/core/workload';
 import type { RequesterDetail } from '@teammetrics/core/workload';
 import type { CoreIssueWorkload } from '@teammetrics/core/types';
+import { AGING_THRESHOLD_DAYS } from '../lib/workloadView';
 
-export const AGING_THRESHOLD_DAYS = 7;
+// Una sola lectura para toda la pantalla de detalle: el crudo de `issues` (compartido
+// entre los dos scopes, que antes lo leian cada uno por su lado), el nombre del board
+// (via `listBoardSync`, liviano — no el snapshot completo de `workload` que trae todos
+// los squads/solicitantes solo para leer un label) y `team_members` crudo (no el
+// snapshot de scorecard, que esta filtrado por la ventana del scorecard y puede dejar
+// afuera a un assignee real). Todo en un unico `Promise.all` por entrada a la pantalla.
+export function useRequesterScreenData(board: number): {
+  issues: CoreIssueWorkload[] | null;
+  boardName: string;
+  memberMap: Record<string, string>;
+  hasData: boolean;
+} {
+  const dataVersion = useSyncStore(s => s.dataVersion);
+  const [issues, setIssues] = useState<CoreIssueWorkload[] | null>(null);
+  const [boardName, setBoardName] = useState('');
+  const [memberMap, setMemberMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    (async () => {
+      const db = await getDb();
+      const [rawIssues, boards, members] = await Promise.all([
+        readWorkloadIssues(db),
+        listBoardSync(db),
+        loadCoreMembers(db),
+      ]);
+      setIssues(rawIssues);
+      setBoardName(boards.find(b => b.id === board)?.name ?? '');
+      const map: Record<string, string> = {};
+      for (const m of members) map[m.id] = m.display_name;
+      setMemberMap(map);
+    })();
+  }, [dataVersion, board]);
+
+  return { issues, boardName, memberMap, hasData: issues !== null };
+}
 
 export interface UseRequesterDetailParams {
   board: number;
@@ -15,16 +50,12 @@ export interface UseRequesterDetailParams {
   to?: string;
 }
 
+// Corre computeRequesterDetail sobre un `issues` ya cargado (compartido entre las dos
+// instancias de este hook, una por scope, en la pantalla) — no vuelve a tocar la base.
 export function useRequesterDetail(
+  issues: CoreIssueWorkload[] | null,
   params: UseRequesterDetailParams,
 ): { detail: RequesterDetail | null; hasData: boolean } {
-  const dataVersion = useSyncStore(s => s.dataVersion);
-  const [issues, setIssues] = useState<CoreIssueWorkload[] | null>(null);
-
-  useEffect(() => {
-    (async () => setIssues(await readWorkloadIssues(await getDb())))();
-  }, [dataVersion]);
-
   const { board, requester, scope, from, to } = params;
 
   const detail = useMemo(() => {
@@ -38,8 +69,7 @@ export function useRequesterDetail(
       agingThresholdDays: AGING_THRESHOLD_DAYS,
       now: new Date(),
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [issues, dataVersion, board, requester, scope, from, to]);
+  }, [issues, board, requester, scope, from, to]);
 
   return { detail, hasData: issues !== null };
 }

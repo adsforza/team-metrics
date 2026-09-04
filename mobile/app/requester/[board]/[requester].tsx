@@ -1,15 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, FlatList, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Colors, Typography } from '../../../lib/theme';
-import { getDb, readTeamMemberNames } from '../../../lib/db';
-import { useRequesterDetail, AGING_THRESHOLD_DAYS } from '../../../hooks/useRequesterDetail';
-import { useWorkload } from '../../../hooks/useWorkload';
+import { parseRequesterSegment, AGING_THRESHOLD_DAYS } from '../../../lib/workloadView';
+import { useRequesterDetail, useRequesterScreenData } from '../../../hooks/useRequesterDetail';
 import { useFilterStore, dateRangeFor } from '../../../store/filterStore';
 import { WorkloadIssueRow } from '../../../components/WorkloadIssueRow';
-
-const NULL_BUCKET = '__null__';
 
 function firstOf(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
@@ -20,30 +17,22 @@ export default function RequesterDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [scope, setScope] = useState<'pendientes' | 'todos'>('pendientes');
-  const [memberMap, setMemberMap] = useState<Record<string, string>>({});
 
   const boardParam = firstOf(params.board);
-  const requesterParam = firstOf(params.requester);
   const board = Number(boardParam);
-  const requester = !requesterParam || requesterParam === NULL_BUCKET
-    ? null
-    : decodeURIComponent(requesterParam);
+  // expo-router ya decodifica el segmento dinamico al leerlo: no hay que volver a
+  // llamar decodeURIComponent aca (romperia nombres con % literal, ver lib/workloadView).
+  const requester = parseRequesterSegment(firstOf(params.requester));
 
   const { timeRange } = useFilterStore();
   const { from, to } = useMemo(() => dateRangeFor(timeRange), [timeRange]);
-  const { workload } = useWorkload();
-  const boardName = workload?.squads.find(sq => sq.board_id === board)?.name ?? '';
 
-  useEffect(() => {
-    getDb().then(db => readTeamMemberNames(db)).then(members => {
-      const map: Record<string, string> = {};
-      for (const m of members) map[m.id] = m.name;
-      setMemberMap(map);
-    }).catch(console.error);
-  }, []);
+  // Una sola lectura para toda la pantalla (issues + nombre del board + team_members
+  // crudo), compartida entre los dos scopes de abajo.
+  const { issues, boardName, memberMap } = useRequesterScreenData(board);
 
-  const pendientes = useRequesterDetail({ board, requester, scope: 'pendientes', from, to });
-  const todos = useRequesterDetail({ board, requester, scope: 'todos', from, to });
+  const pendientes = useRequesterDetail(issues, { board, requester, scope: 'pendientes', from, to });
+  const todos = useRequesterDetail(issues, { board, requester, scope: 'todos', from, to });
   const active = scope === 'pendientes' ? pendientes.detail : todos.detail;
 
   const requesterLabel = requester ?? 'Sin dato';
@@ -54,7 +43,10 @@ export default function RequesterDetailScreen() {
         resumen.estancados > 0 ? `${resumen.estancados} sin arrancar hace +${AGING_THRESHOLD_DAYS}d` : null,
         resumen.p1 > 0 ? `${resumen.p1} son P1` : null,
         resumen.edad_max > 0 ? `más viejo ${resumen.edad_max}d` : null,
-        resumen.edad_p50 > 0 ? `mediana ${resumen.edad_p50}d` : null,
+        // edad_p50 puede salir fraccionario (mediana de cantidad par de abiertos); el
+        // core lo deja crudo a propósito (misma definición que cycle_time_p50) y la
+        // UI redondea solo para mostrar.
+        resumen.edad_p50 > 0 ? `mediana ${Math.round(resumen.edad_p50)}d` : null,
       ].filter((p): p is string => p !== null)
     : [];
 
