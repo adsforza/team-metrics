@@ -1613,9 +1613,9 @@ describe('ageColor', () => {
   });
 
   it('respeta un umbral distinto del default', () => {
-    expect(ageColor(21, 10)).toBe(Colors.textMuted);   // 21 <= 20? no -> naranja
-    expect(ageColor(19, 10)).toBe(Colors.textMuted);
-    expect(ageColor(81, 10)).toBe(Colors.error);
+    expect(ageColor(19, 10)).toBe(Colors.textMuted);   // <= 2T (20): gris
+    expect(ageColor(21, 10)).toBe(Colors.warning);     // > 2T: naranja
+    expect(ageColor(81, 10)).toBe(Colors.error);       // > 8T (80): rojo
   });
 
   it('edad cero es gris', () => {
