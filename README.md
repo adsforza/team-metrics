@@ -84,7 +84,8 @@ Todos los endpoints de métricas aceptan filtros: `?from=YYYY-MM-DD&to=YYYY-MM-D
 | GET | `/api/metrics/comparison` | Comparativa semana vs. semana |
 | GET | `/api/team` | Scorecard por persona (delivery/predictability/focus/flow/regresiones/bloqueados) |
 | GET | `/api/team/members` | Lista de miembros |
-| GET | `/api/raw` | Crudo (issues/transitions/members) con delta `?since=` — usado por el mobile |
+| GET | `/api/raw` | Crudo (issues/transitions/members/boards) con delta `?since=` — usado por el mobile |
+| GET | `/api/workload` | Carga de trabajo por squad y equipo solicitante (`?from&to`) |
 | POST | `/api/tallas` | Recibe clasificaciones del mobile (fill-only) |
 | POST | `/api/sync` | Sync manual con Jira |
 | POST | `/api/sync/reclassify` | Reclasifica tallas pendientes |

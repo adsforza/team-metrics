@@ -187,37 +187,63 @@ describe('GET /api/raw', () => {
 });
 
 describe('GET /api/workload', () => {
-  it('devuelve squads con sus solicitantes', async () => {
+  beforeAll(() => {
+    mockDb.prepare(`INSERT INTO board_sync (board_id, last_synced_at, name) VALUES (9534, '2026-06-01T00:00:00Z', 'Squad Groot')`).run();
+    // Pedido real: creado dentro del rango, en el board 9534 y todavia pendiente.
+    mockDb.prepare(`INSERT INTO issues (id, title, description, status, assignee_id, talla, talla_confidence, created_at, updated_at, synced_at, last_transition_at, talla_updated_at, requester, boards, priority)
+      VALUES ('WL-1','Pedido de Groot','','In Progress','u1',NULL,NULL,'2026-06-10T00:00:00Z','2026-06-10T00:00:00Z','2026-06-10T00:00:00Z','2026-06-10T00:00:00Z',NULL,'Groot','9534','High (P1)')`).run();
+    // Mismo solicitante y board, pero cerrado y creado fuera del rango: ni pedido ni
+    // pendiente. Esta para que los contadores de abajo no puedan salir bien de casualidad.
+    mockDb.prepare(`INSERT INTO issues (id, title, description, status, assignee_id, talla, talla_confidence, created_at, updated_at, synced_at, last_transition_at, talla_updated_at, requester, boards, priority)
+      VALUES ('WL-VIEJO','Cerrado y viejo','','Done','u1',NULL,NULL,'2026-01-05T00:00:00Z','2026-01-06T00:00:00Z','2026-01-06T00:00:00Z','2026-01-06T00:00:00Z',NULL,'Groot','9534',NULL)`).run();
+    // boards NULL: no pertenece a ningun squad conocido.
+    mockDb.prepare(`INSERT INTO issues (id, title, description, status, assignee_id, talla, talla_confidence, created_at, updated_at, synced_at, last_transition_at, talla_updated_at, requester, boards, priority)
+      VALUES ('WL-NULLBOARDS','sin boards','','In Progress','u1',NULL,NULL,'2026-06-10T00:00:00Z','2026-06-10T00:00:00Z','2026-06-10T00:00:00Z','2026-06-10T00:00:00Z',NULL,'Groot',NULL,NULL)`).run();
+  });
+
+  it('devuelve el squad con su nombre y los pedidos/pendientes de cada solicitante', async () => {
     const res = await request(app).get('/api/workload?from=2026-06-01&to=2026-06-30');
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body.squads)).toBe(true);
+    const groot = res.body.squads.find((s: any) => s.board_id === 9534);
+    expect(groot).toBeDefined();
+    expect(groot.name).toBe('Squad Groot');            // el nombre sale de board_sync
+    const fila = groot.requesters.find((r: any) => r.requester === 'Groot');
+    expect(fila).toEqual({ requester: 'Groot', pedidos: 1, pendientes: 1 });
+    expect(groot.pedidos).toBe(1);
+    expect(groot.pendientes).toBe(1);                  // WL-VIEJO (cerrado, fuera de rango) no suma
     expect(res.body.totals).toHaveProperty('compartidos');
   });
 
-  it('un issue con boards NULL en la base no rompe el endpoint', async () => {
-    mockDb.prepare(`INSERT INTO board_sync (board_id, last_synced_at, name) VALUES (9534, '2026-06-01T00:00:00Z', 'Squad Groot')`).run();
-    mockDb.prepare(`INSERT INTO issues (id, title, description, status, assignee_id, talla, talla_confidence, created_at, updated_at, synced_at, last_transition_at, talla_updated_at, requester, boards, priority)
-      VALUES ('WL-NULLBOARDS','sin boards','','In Progress','u1',NULL,NULL,'2026-06-10T00:00:00Z','2026-06-10T00:00:00Z','2026-06-10T00:00:00Z','2026-06-10T00:00:00Z',NULL,'Groot',NULL,NULL)`).run();
+  it('un issue con boards NULL en la base no rompe el endpoint ni entra en ningun squad', async () => {
     const res = await request(app).get('/api/workload?from=2026-06-01&to=2026-06-30');
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body.squads)).toBe(true);
-    // El issue con boards NULL se parsea como [] y no pertenece a ningun squad conocido.
     const groot = res.body.squads.find((s: any) => s.board_id === 9534);
-    expect(groot).toBeDefined();
-    expect(groot.requesters.some((r: any) => r.requester === 'Groot')).toBe(false);
+    // WL-NULLBOARDS tiene el mismo requester que WL-1; si el parseo de boards lo dejara
+    // colarse, la fila de Groot marcaria 2 pedidos en vez de 1.
+    expect(groot.requesters.find((r: any) => r.requester === 'Groot').pedidos).toBe(1);
   });
 });
 
-describe('GET /api/workload/detail', () => {
-  it('filtra por board y solicitante', async () => {
-    const res = await request(app).get('/api/workload/detail?board_id=9534&requester=Groot&scope=pendientes');
-    expect(res.status).toBe(200);
-    expect(Array.isArray(res.body.issues)).toBe(true);
-    expect(res.body.resumen).toHaveProperty('estancados');
+describe('GET /api/raw — columnas y boards de carga de trabajo', () => {
+  it('el crudo trae requester, boards y priority del issue', async () => {
+    const res = await request(app).get('/api/raw');
+    const wl1 = res.body.issues.find((i: any) => i.id === 'WL-1');
+    expect(wl1).toBeDefined();
+    // Sin estas tres el drill-down del mobile en backend mode queda permanentemente vacio.
+    expect(wl1.requester).toBe('Groot');
+    expect(wl1.boards).toBe('9534');
+    expect(wl1.priority).toBe('High (P1)');
   });
 
-  it('sin board_id responde 400', async () => {
-    expect((await request(app).get('/api/workload/detail')).status).toBe(400);
+  it('el crudo trae los boards con su nombre', async () => {
+    const res = await request(app).get('/api/raw');
+    expect(res.body.boards).toContainEqual({ board_id: 9534, name: 'Squad Groot' });
+  });
+
+  it('los boards viajan completos aunque el delta filtre por since', async () => {
+    const res = await request(app).get('/api/raw?since=2030-01-01T00:00:00Z');
+    expect(res.body.issues).toHaveLength(0);
+    expect(res.body.boards).toContainEqual({ board_id: 9534, name: 'Squad Groot' });
   });
 });
 
