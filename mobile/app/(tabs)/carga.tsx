@@ -22,7 +22,10 @@ export default function CargaScreen() {
   }
 
   const goToRequester = (boardId: number, requester: string | null) => {
-    const segment = requester !== null ? encodeURIComponent(requester) : 'sin-dato';
+    // `__null__` es el literal que la pantalla de detalle espera para el bucket
+    // "Sin dato". Las dos puntas tienen que usar el mismo o el drill-down de ese
+    // bucket falla en silencio.
+    const segment = requester !== null ? encodeURIComponent(requester) : '__null__';
     router.push(`/requester/${boardId}/${segment}` as never);
   };
 
