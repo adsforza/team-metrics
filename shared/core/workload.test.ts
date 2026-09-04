@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeWorkload, computeRequesterDetail } from './workload';
+import { computeWorkload, computeRequesterDetail, parseBoardsColumn } from './workload';
 import type { CoreIssueWorkload } from './types';
 
 const iss = (over: Partial<CoreIssueWorkload>): CoreIssueWorkload => ({
@@ -161,5 +161,27 @@ describe('computeRequesterDetail', () => {
     const r = computeRequesterDetail([], P);
     expect(r.issues).toEqual([]);
     expect(r.resumen).toEqual({ abiertos: 0, estancados: 0, p1: 0, edad_max: 0, edad_p50: 0 });
+  });
+});
+
+describe('parseBoardsColumn', () => {
+  it('parsea el CSV de ids', () => {
+    expect(parseBoardsColumn('9534,9536')).toEqual([9534, 9536]);
+  });
+
+  it('null, undefined y string vacio dan lista vacia', () => {
+    expect(parseBoardsColumn(null)).toEqual([]);
+    expect(parseBoardsColumn(undefined)).toEqual([]);
+    expect(parseBoardsColumn('')).toEqual([]);
+  });
+
+  it('descarta segmentos vacios en vez de convertirlos en el board 0', () => {
+    // Number('') es 0, un board_id que no existe pero que pasa el filtro de NaN.
+    expect(parseBoardsColumn(',9534,')).toEqual([9534]);
+    expect(parseBoardsColumn(',')).toEqual([]);
+  });
+
+  it('descarta segmentos no numericos', () => {
+    expect(parseBoardsColumn('9534,basura')).toEqual([9534]);
   });
 });

@@ -13,6 +13,21 @@ export interface WorkloadResult {
   totals: { pedidos: number; pendientes: number; compartidos: number };
 }
 
+// Parser unico de la columna `boards` (CSV de ids, p.ej. '9534,9536'). Vive aca porque
+// la leen dos bases distintas — la del server (better-sqlite3) y la del mobile
+// (expo-sqlite) — y tenerlo duplicado ya habia dejado dos comportamientos: el server
+// filtraba NaN pero dejaba pasar '' (que Number convierte en 0, un board_id falso), el
+// mobile no filtraba nada. Un solo parser para que el mismo string signifique lo mismo
+// en las dos mitades.
+export function parseBoardsColumn(raw: unknown): number[] {
+  if (raw === null || raw === undefined || raw === '') return [];
+  return String(raw)
+    .split(',')
+    .filter(s => s !== '')
+    .map(Number)
+    .filter(n => !isNaN(n));
+}
+
 // Pendiente = todo lo que no esta terminado ni cancelado. Deliberadamente NO se
 // filtra por rango: un ticket abierto hace ocho meses sigue pesando hoy.
 export function isPendiente(status: string): boolean {
