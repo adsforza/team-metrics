@@ -93,6 +93,11 @@ async function initSchema(db: SQLite.SQLiteDatabase): Promise<void> {
   ] as const) {
     if (!issueCols.some(c => c.name === col)) await db.execAsync(ddl);
   }
+
+  const boardCols = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(board_sync)`);
+  if (!boardCols.some(c => c.name === 'name')) {
+    await db.execAsync(`ALTER TABLE board_sync ADD COLUMN name TEXT`);
+  }
 }
 
 // ── Readers ──────────────────────────────────────────────────────────────────
@@ -316,23 +321,24 @@ export async function getBoardLastSync(db: SQLite.SQLiteDatabase, boardId: numbe
   return row?.last_synced_at;
 }
 
-export async function setBoardLastSync(db: SQLite.SQLiteDatabase, boardId: number, iso: string): Promise<void> {
+export async function setBoardLastSync(
+  db: SQLite.SQLiteDatabase, boardId: number, iso: string, name?: string | null,
+): Promise<void> {
   await db.runAsync(
-    `INSERT INTO board_sync (board_id, last_synced_at) VALUES (?,?)
-     ON CONFLICT(board_id) DO UPDATE SET last_synced_at=excluded.last_synced_at`,
-    [boardId, iso]
+    `INSERT INTO board_sync (board_id, last_synced_at, name) VALUES (?,?,?)
+     ON CONFLICT(board_id) DO UPDATE SET last_synced_at=excluded.last_synced_at,
+     name=COALESCE(excluded.name, board_sync.name)`,
+    [boardId, iso, name ?? null]
   );
 }
 
-// Boards conocidos por directSync para computeWorkload. board_sync no tiene columna de
-// nombre (a diferencia de su contraparte server): el mobile nunca lo resuelve contra
-// Jira, así que el llamador siempre completa el fallback "Board {id}". board_id 0 es el
-// sentinela de `performSync` (crudo del server, ver getRawSince) y no un board real.
-export async function listBoardSync(db: SQLite.SQLiteDatabase): Promise<{ id: number }[]> {
-  const rows = await db.getAllAsync<{ board_id: number }>(
-    'SELECT board_id FROM board_sync WHERE board_id != 0'
+// Boards conocidos por directSync para computeWorkload. board_id 0 es el sentinela de
+// `performSync` (crudo del server, ver getRawSince) y no un board real.
+export async function listBoardSync(db: SQLite.SQLiteDatabase): Promise<{ id: number; name: string | null }[]> {
+  const rows = await db.getAllAsync<{ board_id: number; name: string | null }>(
+    'SELECT board_id, name FROM board_sync WHERE board_id != 0'
   );
-  return rows.map(r => ({ id: r.board_id }));
+  return rows.map(r => ({ id: r.board_id, name: r.name }));
 }
 
 export interface RawIssue {

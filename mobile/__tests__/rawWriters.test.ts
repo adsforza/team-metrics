@@ -100,6 +100,6 @@ describe('board_sync', () => {
     expect(await getBoardLastSync(db, 7)).toBe('2026-01-01T00:00:00Z');
     await setBoardLastSync(db, 7, '2026-02-02T00:00:00Z');
     const setSql = runs.find(r => r.sql.includes('board_sync'));
-    expect(setSql!.args).toEqual([7, '2026-02-02T00:00:00Z']);
+    expect(setSql!.args).toEqual([7, '2026-02-02T00:00:00Z', null]);
   });
 });

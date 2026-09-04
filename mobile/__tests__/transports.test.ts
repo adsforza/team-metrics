@@ -5,7 +5,7 @@ jest.mock('@google/generative-ai', () => ({
   })),
 }));
 
-import { jiraHttpFetch, makeGeminiGenerate } from '../lib/transports';
+import { jiraHttpFetch, makeGeminiGenerate, fetchBoardNameDirect } from '../lib/transports';
 
 describe('jiraHttpFetch', () => {
   it('builds URL with params + Basic auth header and returns json', async () => {
@@ -24,6 +24,27 @@ describe('jiraHttpFetch', () => {
     (global as any).fetch = jest.fn(async () => ({ ok: false, status: 429, json: async () => ({ errorMessages: ['rate'] }) }));
     await expect(jiraHttpFetch({ url: 'u', auth: { username: 'e', password: 't' }, params: {} }))
       .rejects.toThrow(/Jira API error \(429\)/);
+  });
+});
+
+describe('fetchBoardNameDirect', () => {
+  const cfg = { baseUrl: 'https://x.atlassian.net', email: 'e@t.com',
+                apiToken: 'tok', projectKey: 'DPP', boardId: 9534 };
+
+  it('devuelve el nombre del board', async () => {
+    const http = jest.fn(async () => ({ name: 'Black Team Infra' })) as any;
+    expect(await fetchBoardNameDirect(cfg, http)).toBe('Black Team Infra');
+    expect(http.mock.calls[0][0].url).toContain('/rest/agile/1.0/board/9534');
+  });
+
+  it('devuelve null si Jira falla, sin propagar el error', async () => {
+    const http = jest.fn(async () => { throw new Error('boom'); }) as any;
+    await expect(fetchBoardNameDirect(cfg, http)).resolves.toBeNull();
+  });
+
+  it('devuelve null si name no es un string', async () => {
+    const http = jest.fn(async () => ({ name: { value: 'raro' } })) as any;
+    expect(await fetchBoardNameDirect(cfg, http)).toBeNull();
   });
 });
 

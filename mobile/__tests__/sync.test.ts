@@ -86,7 +86,7 @@ describe('performSync', () => {
     // seteó el sentinela board_sync con board_id 0 y el serverSyncedAt
     expect(db.runAsync).toHaveBeenCalledWith(
       expect.stringContaining('INTO board_sync'),
-      [0, '2026-06-21T00:05:00Z'],
+      [0, '2026-06-21T00:05:00Z', null],
     );
   });
 

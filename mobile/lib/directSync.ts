@@ -31,7 +31,7 @@ import {
   readUnclassifiedIssues, updateIssueTallas,
   loadCoreIssues, loadCoreTransitions, loadCoreMembers, listBoardSync,
 } from './db';
-import { jiraHttpFetch, makeGeminiGenerate } from './transports';
+import { jiraHttpFetch, makeGeminiGenerate, fetchBoardNameDirect } from './transports';
 
 const MS_DAY = 1000 * 60 * 60 * 24;
 
@@ -211,7 +211,7 @@ async function recomputeSnapshots(
   const transitions = await loadCoreTransitions(db);
   const members = await loadCoreMembers(db);
   const boardRows = await listBoardSync(db);
-  const boards = boardRows.map(b => ({ id: b.id, name: `Board ${b.id}` }));
+  const boards = boardRows.map(b => ({ id: b.id, name: b.name ?? `Board ${b.id}` }));
   const bundle = computeBundle(issues, transitions, members, filters, now, boards);
   await writeSnapshots(db, bundle, syncedAt);
 }
@@ -238,7 +238,8 @@ export async function directSync(
       const since = await getRawSince(db, boardCfg.boardId);
       const raw = await fetchBoardIssues(boardCfg, http, since);
       await upsertRawIssues(db, raw);
-      await setBoardLastSync(db, boardCfg.boardId, syncedAt);
+      const boardName = await fetchBoardNameDirect(boardCfg, http);
+      await setBoardLastSync(db, boardCfg.boardId, syncedAt, boardName);
       okCount += 1;
     } catch (err) {
       failCount += 1;
