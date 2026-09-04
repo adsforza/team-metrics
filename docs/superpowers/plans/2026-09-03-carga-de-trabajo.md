@@ -1231,6 +1231,127 @@ git commit -m "feat(mobile): workload en computeBundle y en los dos caminos de s
 
 ---
 
+### Task 7b: Mobile — nombre real del board en direct mode
+
+**Files:**
+- Modify: `mobile/lib/db.ts`
+- Modify: `mobile/lib/transports.ts`
+- Modify: `mobile/lib/directSync.ts`
+- Test: `mobile/__tests__/transports.test.ts`, `mobile/__tests__/directSync.test.ts`
+
+**Interfaces:**
+- Consumes: `jiraHttpFetch` de `mobile/lib/transports.ts`, `listBoardSync` de la Task 7.
+- Produces: `fetchBoardNameDirect(cfg, http)` y la columna `board_sync.name` en el mobile.
+
+**Por qué existe esta tarea.** La Task 4 le agregó `name` al `board_sync` del **server**, pero
+el plan omitió hacer lo mismo en el mobile. En backend mode los nombres llegan correctos
+dentro del snapshot; en direct mode la Task 7 sintetiza `Board {id}`, así que la solapa
+muestra `Board 9534` en vez de `Black Team Infra` justo cuando se usa fuera de la oficina.
+El pedido original era ver los squads por su nombre.
+
+- [ ] **Step 1: Escribir el test del transporte**
+
+Agregar a `mobile/__tests__/transports.test.ts`:
+
+```ts
+import { fetchBoardNameDirect } from '../lib/transports';
+
+describe('fetchBoardNameDirect', () => {
+  const cfg = { baseUrl: 'https://x.atlassian.net', email: 'e@t.com',
+                apiToken: 'tok', projectKey: 'DPP', boardId: 9534 };
+
+  it('devuelve el nombre del board', async () => {
+    const http = jest.fn(async () => ({ name: 'Black Team Infra' })) as any;
+    expect(await fetchBoardNameDirect(cfg, http)).toBe('Black Team Infra');
+    expect(http.mock.calls[0][0].url).toContain('/rest/agile/1.0/board/9534');
+  });
+
+  it('devuelve null si Jira falla, sin propagar el error', async () => {
+    const http = jest.fn(async () => { throw new Error('boom'); }) as any;
+    await expect(fetchBoardNameDirect(cfg, http)).resolves.toBeNull();
+  });
+
+  it('devuelve null si name no es un string', async () => {
+    const http = jest.fn(async () => ({ name: { value: 'raro' } })) as any;
+    expect(await fetchBoardNameDirect(cfg, http)).toBeNull();
+  });
+});
+```
+
+- [ ] **Step 2: Correr el test para verificar que falla**
+
+Run: `cd mobile && npx jest __tests__/transports.test.ts`
+Expected: FAIL — `fetchBoardNameDirect is not a function`.
+
+- [ ] **Step 3: Implementar el transporte**
+
+En `mobile/lib/transports.ts`:
+
+```ts
+// Espeja a JiraClient.fetchBoardName del server. El nombre es cosmetico: si Jira
+// falla o devuelve un payload raro se degrada a null y el sync sigue.
+export async function fetchBoardNameDirect(cfg: JiraConfig, http: JiraHttp = jiraHttpFetch): Promise<string | null> {
+  try {
+    const data = await http({
+      url: `${cfg.baseUrl}/rest/agile/1.0/board/${cfg.boardId}`,
+      auth: { username: cfg.email, password: cfg.apiToken }, params: {},
+    });
+    const name = (data as any)?.name;
+    return typeof name === 'string' ? name : null;
+  } catch { return null; }
+}
+```
+
+- [ ] **Step 4: Migración y persistencia**
+
+En `mobile/lib/db.ts`, agregar `name TEXT` al `CREATE TABLE IF NOT EXISTS board_sync` y una
+guarda de migración aditiva junto a las de `issues`:
+
+```ts
+  const boardCols = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(board_sync)`);
+  if (!boardCols.some(c => c.name === 'name')) {
+    await db.execAsync(`ALTER TABLE board_sync ADD COLUMN name TEXT`);
+  }
+```
+
+Extender `setBoardLastSync(db, boardId, iso)` con un parámetro opcional `name?: string | null`
+que preserve el nombre guardado cuando llega `null`, igual que hace el server:
+
+```ts
+  `INSERT INTO board_sync (board_id, last_synced_at, name) VALUES (?,?,?)
+   ON CONFLICT(board_id) DO UPDATE SET last_synced_at=excluded.last_synced_at,
+   name=COALESCE(excluded.name, board_sync.name)`
+```
+
+Y hacer que `listBoardSync(db)` devuelva también `name`.
+
+- [ ] **Step 5: Usarlo en directSync**
+
+En `mobile/lib/directSync.ts`, al cerrar el sync de cada board, traer el nombre y pasarlo a
+`setBoardLastSync`. Al armar los `boards` para `computeBundle`, usar `name ?? \`Board ${id}\``
+en vez de sintetizar siempre `Board {id}`.
+
+- [ ] **Step 6: Test del orquestador**
+
+Agregar a `mobile/__tests__/directSync.test.ts` un caso que verifique que el nombre traído
+de Jira termina en el `WorkloadResult` del bundle, y otro que verifique que si el fetch del
+nombre devuelve `null` el sync no se rompe y el squad cae en `Board {id}`.
+
+- [ ] **Step 7: Verificar**
+
+Run: `cd mobile && npx jest`
+Expected: toda la suite en verde. **No commitear con tests en rojo.**
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add mobile/lib/transports.ts mobile/lib/db.ts mobile/lib/directSync.ts \
+        mobile/__tests__/transports.test.ts mobile/__tests__/directSync.test.ts
+git commit -m "feat(mobile): nombre real del board en direct mode"
+```
+
+---
+
 ### Task 8: Mobile — hook y pantalla principal (layout B)
 
 **Files:**
