@@ -10,7 +10,7 @@ jest.mock('expo-sqlite', () => {
 });
 
 import * as SQLite from 'expo-sqlite';
-import { getDb, hasData, readPendingTallaPush, markTallasPushed, updateIssueTallas, upsertServerRaw, getRawSince, clearAllBoardSync } from '../lib/db';
+import { getDb, hasData, readPendingTallaPush, markTallasPushed, updateIssueTallas, upsertServerRaw, getRawSince, clearAllBoardSync, BOARD_SYNC_EPOCH } from '../lib/db';
 
 describe('getDb', () => {
   test('opens database and runs schema migration', async () => {
@@ -78,7 +78,7 @@ describe('upsertServerRaw', () => {
     (db.getFirstAsync as jest.Mock).mockResolvedValue(null); // transición no existe -> se inserta
     (db.runAsync as jest.Mock).mockClear();
     await upsertServerRaw(db, {
-      issues: [{ id: 'S-1', title: 't', description: '', status: 'Done', assignee_id: 'u1', talla: 'M', talla_confidence: 0.9, created_at: 'c', updated_at: 'u', last_transition_at: 'l' }],
+      issues: [{ id: 'S-1', title: 't', description: '', status: 'Done', assignee_id: 'u1', talla: 'M', talla_confidence: 0.9, created_at: 'c', updated_at: 'u', last_transition_at: 'l', requester: 'Groot', boards: '9534', priority: 'High (P1)' }],
       transitions: [{ issue_id: 'S-1', from_status: 'To Do', to_status: 'Done', transitioned_at: '2026-06-01T00:00:00Z' }],
       members: [{ id: 'u1', display_name: 'Ana', email: 'a@t.com', avatar_url: null }],
       serverSyncedAt: '2026-06-01T00:05:00Z',
@@ -100,8 +100,8 @@ describe('upsertServerRaw', () => {
     (db.runAsync as jest.Mock).mockClear();
     await upsertServerRaw(db, {
       issues: [
-        { id: 'WITH', title: 't', description: '', status: 'Done', assignee_id: null, talla: 'L', talla_confidence: 0.8, created_at: 'c', updated_at: 'u', last_transition_at: null },
-        { id: 'NULL', title: 't', description: '', status: 'Done', assignee_id: null, talla: null, talla_confidence: null, created_at: 'c', updated_at: 'u', last_transition_at: null },
+        { id: 'WITH', title: 't', description: '', status: 'Done', assignee_id: null, talla: 'L', talla_confidence: 0.8, created_at: 'c', updated_at: 'u', last_transition_at: null, requester: null, boards: null, priority: null },
+        { id: 'NULL', title: 't', description: '', status: 'Done', assignee_id: null, talla: null, talla_confidence: null, created_at: 'c', updated_at: 'u', last_transition_at: null, requester: null, boards: null, priority: null },
       ],
       transitions: [], members: [], serverSyncedAt: null,
     });
@@ -111,6 +111,53 @@ describe('upsertServerRaw', () => {
     const nullPushed = calls.find(c => c[1].includes('NULL'))![1];
     expect(withPushed[withPushed.length - 1]).toBe(1);
     expect(nullPushed[nullPushed.length - 1]).toBe(0);
+  });
+});
+
+describe('upsertServerRaw — columnas y boards de carga de trabajo', () => {
+  const bundle = (over: any = {}) => ({
+    issues: [{ id: 'S-1', title: 't', description: '', status: 'In Progress', assignee_id: null, talla: null, talla_confidence: null, created_at: 'c', updated_at: 'u', last_transition_at: null, requester: 'Groot', boards: '9534,9536', priority: 'High (P1)' }],
+    transitions: [], members: [], serverSyncedAt: null,
+    ...over,
+  });
+
+  test('escribe requester, boards y priority del crudo del server', async () => {
+    // Sin esto, en backend mode (el modo por defecto) las tres columnas quedan NULL y
+    // el drill-down de solicitante — que lee la tabla `issues` local — sale vacio.
+    const db = await getDb();
+    (db.getFirstAsync as jest.Mock).mockResolvedValue(null);
+    (db.runAsync as jest.Mock).mockClear();
+    await upsertServerRaw(db, bundle());
+    const call = (db.runAsync as jest.Mock).mock.calls.find(c => String(c[0]).includes('INTO issues'))!;
+    expect(String(call[0])).toContain('requester=excluded.requester');
+    expect(String(call[0])).toContain('boards=excluded.boards');
+    expect(String(call[0])).toContain('priority=excluded.priority');
+    expect(call[1]).toContain('Groot');
+    expect(call[1]).toContain('9534,9536');
+    expect(call[1]).toContain('High (P1)');
+    // La talla sigue preservandose: el mobile clasifica offline y empuja al server.
+    expect(String(call[0])).toContain('COALESCE(excluded.talla, issues.talla)');
+  });
+
+  test('persiste el nombre de cada board sin tocar su last_synced_at', async () => {
+    const db = await getDb();
+    (db.getFirstAsync as jest.Mock).mockResolvedValue(null);
+    (db.runAsync as jest.Mock).mockClear();
+    await upsertServerRaw(db, bundle({ boards: [{ board_id: 9534, name: 'Black Team Infra' }] }));
+    const call = (db.runAsync as jest.Mock).mock.calls.find(c => String(c[0]).includes('INTO board_sync'))!;
+    expect(call).toBeTruthy();
+    expect(call[1]).toEqual([9534, 'Black Team Infra']);
+    expect(String(call[0])).toContain('name=COALESCE(excluded.name, board_sync.name)');
+    // last_synced_at es el cursor de direct mode: el crudo del server no lo pisa.
+    expect(String(call[0])).not.toContain('last_synced_at');
+  });
+
+  test('un bundle sin boards (server viejo) no rompe', async () => {
+    const db = await getDb();
+    (db.getFirstAsync as jest.Mock).mockResolvedValue(null);
+    (db.runAsync as jest.Mock).mockClear();
+    await upsertServerRaw(db, bundle({ boards: undefined }));
+    expect((db.runAsync as jest.Mock).mock.calls.find(c => String(c[0]).includes('INTO board_sync'))).toBeUndefined();
   });
 });
 
@@ -136,10 +183,16 @@ describe('getRawSince', () => {
 });
 
 describe('clearAllBoardSync', () => {
-  test('borra todos los cursores de sync', async () => {
+  test('resetea los cursores a la epoch sin borrar la fila ni el nombre del board', async () => {
+    // Un DELETE se llevaba puesto board_sync.name, que es lo unico que le pone nombre
+    // al squad en la pantalla de carga y en el header del drill-down.
     const db = await getDb();
     (db.runAsync as jest.Mock).mockClear();
     await clearAllBoardSync(db);
-    expect(db.runAsync).toHaveBeenCalledWith('DELETE FROM board_sync');
+    const [sql, args] = (db.runAsync as jest.Mock).mock.calls[0];
+    expect(String(sql)).not.toMatch(/DELETE/i);
+    expect(String(sql)).toContain('UPDATE board_sync SET last_synced_at');
+    expect(args).toEqual([BOARD_SYNC_EPOCH]);
+    expect(BOARD_SYNC_EPOCH).toBe('1970-01-01T00:00:00.000Z');
   });
 });

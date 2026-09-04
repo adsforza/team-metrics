@@ -1,6 +1,7 @@
 import {
   splitRequesters, barPct, ageColor,
   encodeRequesterSegment, parseRequesterSegment, NULL_BUCKET,
+  parseBoardSegment, breadcrumbLabel, detailScreenState,
 } from '../lib/workloadView';
 import { Colors } from '../lib/theme';
 
@@ -105,5 +106,71 @@ describe('encodeRequesterSegment / parseRequesterSegment', () => {
   it('segmento undefined o vacio cae al bucket null', () => {
     expect(parseRequesterSegment(undefined)).toBeNull();
     expect(parseRequesterSegment('')).toBeNull();
+  });
+});
+
+describe('parseBoardSegment', () => {
+  it('acepta un id de board', () => {
+    expect(parseBoardSegment('9534')).toBe(9534);
+  });
+
+  it('rechaza lo que no es un id (NaN silencioso)', () => {
+    // Number('abc') = NaN: antes se propagaba hasta el filtro y la pantalla degradaba
+    // a lista vacia, indistinguible de "este solicitante no tiene tickets".
+    expect(parseBoardSegment('abc')).toBeNull();
+    expect(parseBoardSegment(undefined)).toBeNull();
+    expect(parseBoardSegment('')).toBeNull();
+    expect(parseBoardSegment('  ')).toBeNull();
+    expect(parseBoardSegment('9534.5')).toBeNull();
+    expect(parseBoardSegment('-1')).toBeNull();
+    expect(parseBoardSegment('0')).toBeNull();
+  });
+});
+
+describe('breadcrumbLabel', () => {
+  it('arma el breadcrumb con el nombre del squad', () => {
+    expect(breadcrumbLabel('Black Team Infra')).toBe('Black Team Infra · solicitante');
+  });
+
+  it('sin nombre no deja el separador ni el espacio colgante', () => {
+    // El sintoma de backend mode antes de que los nombres bajaran por /api/raw.
+    expect(breadcrumbLabel('')).toBe('Solicitante');
+    expect(breadcrumbLabel(null)).toBe('Solicitante');
+    expect(breadcrumbLabel(undefined)).toBe('Solicitante');
+  });
+});
+
+describe('detailScreenState', () => {
+  const base = {
+    board: 9534, cargado: true, totalIssues: 10, visibles: 3,
+    scope: 'pendientes' as const, requesterLabel: 'Groot',
+  };
+
+  it('board invalido gana sobre todo lo demas', () => {
+    expect(detailScreenState({ ...base, board: null }).kind).toBe('board-invalido');
+  });
+
+  it('mientras no termino de leer la base muestra cargando, no vacio', () => {
+    expect(detailScreenState({ ...base, cargado: false, visibles: 0 }).kind).toBe('cargando');
+  });
+
+  it('con resultados muestra la lista', () => {
+    expect(detailScreenState(base).kind).toBe('lista');
+  });
+
+  it('base local vacia se distingue de filtro sin resultados', () => {
+    const sinDatos = detailScreenState({ ...base, totalIssues: 0, visibles: 0 });
+    expect(sinDatos.kind).toBe('sin-datos');
+    const sinResultados = detailScreenState({ ...base, visibles: 0 });
+    expect(sinResultados.kind).toBe('sin-resultados');
+  });
+
+  it('el mensaje de sin-resultados nombra al solicitante y depende del scope', () => {
+    const pend = detailScreenState({ ...base, visibles: 0 });
+    const todos = detailScreenState({ ...base, visibles: 0, scope: 'todos' });
+    expect(pend.kind === 'sin-resultados' && pend.mensaje).toContain('Groot');
+    expect(pend.kind === 'sin-resultados' && pend.mensaje).toContain('pendientes');
+    expect(todos.kind === 'sin-resultados' && todos.mensaje).toContain('rango');
+    expect(pend).not.toEqual(todos);
   });
 });
