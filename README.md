@@ -96,6 +96,7 @@ Todos los endpoints de métricas aceptan filtros: `?from=YYYY-MM-DD&to=YYYY-MM-D
 - **En casa (backend mode):** poné la URL del server (IP LAN de la Mac) en Ajustes → Servidor. El mobile baja snapshots + crudo, y le empuja al server las tallas que haya clasificado offline (para no re-gastar cuota de Gemini).
 - **Fuera de casa (direct mode):** cargá las credenciales de Jira/Gemini en Ajustes → "Jira directo". El mobile pega directo a Jira, clasifica con Gemini y computa las métricas en el dispositivo.
 - **Delta incremental:** ambos modos bajan solo lo que cambió. Si un issue quedó con estado viejo (updates perdidos durante una caída del sync), usá **Ajustes → "Resync completo"** para re-bajar todo.
+- **Al estrenar la solapa Carga, corré una vez "Resync completo".** El drill-down por solicitante lee la tabla local del celular (para funcionar offline), y el crudo baja por delta: un celular ya sincronizado no vuelve a bajar los issues que no cambiaron, así que sus columnas `requester`/`boards` quedan vacías y el detalle sale sin tickets. Es una sola vez, después el delta alcanza.
 
 ## Notas
 
