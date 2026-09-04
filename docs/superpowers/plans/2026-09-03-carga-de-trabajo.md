@@ -1415,79 +1415,105 @@ En `mobile/app/(tabs)/_layout.tsx`, entre `equipo` e `issues`:
       <Tabs.Screen name="carga" options={{ title: 'Carga', tabBarIcon: tabIcon('pie-chart') }} />
 ```
 
-- [ ] **Step 5: Escribir los tests de `SquadCard`**
+- [ ] **Step 5: Extraer la lógica pura y testearla**
 
-`@testing-library/react-native@14` ya es dependencia del proyecto y el preset de jest es
-`jest-expo`: no hay que instalar nada. Crear `mobile/__tests__/SquadCard.test.tsx`:
+> **RNTL no funciona en este proyecto.** `@testing-library/react-native@14` está declarada
+> pero es incompatible con el `jest-expo` 57 instalado: `render()` devuelve un objeto sin
+> ninguna query y `screen` tira "`render` function has not been called". Verificado con un
+> smoke test mínimo. **No intentes usar RNTL, no instales dependencias y no toques la
+> config de jest.** En su lugar, la lógica que puede romperse en silencio se extrae a
+> funciones puras y se testea con jest común.
 
-```tsx
-import React from 'react';
-import { render, fireEvent, screen } from '@testing-library/react-native';
-import { SquadCard } from '../components/SquadCard';
+Crear `mobile/lib/workloadView.ts` con la lógica de presentación que hoy vive dentro de
+`SquadCard`:
 
-const squad = {
-  board_id: 9534, name: 'Black Team Infra', pedidos: 518, pendientes: 70,
-  requesters: [
-    { requester: 'Groot', pedidos: 103, pendientes: 5 },
-    { requester: 'Camel Case', pedidos: 103, pendientes: 1 },
-    { requester: null, pedidos: 82, pendientes: 31 },
-    { requester: 'Devengers', pedidos: 39, pendientes: 0 },
-    { requester: 'La Teconeta', pedidos: 30, pendientes: 0 },
-  ],
-};
+```ts
+import type { WorkloadRequester } from '@teammetrics/core/workload';
 
-const setup = (onPress = jest.fn()) => {
-  render(<SquadCard squad={squad} rangeLabel="90d" onPressRequester={onPress} />);
-  return onPress;
-};
+export interface SplitRequesters {
+  top: WorkloadRequester[];
+  rest: WorkloadRequester[];
+  restPedidos: number;
+  restPendientes: number;
+  maxPedidos: number;
+}
 
-describe('SquadCard', () => {
-  it('muestra el nombre del squad y los dos totales', () => {
-    setup();
-    expect(screen.getByText('Black Team Infra')).toBeTruthy();
-    expect(screen.getByText('518')).toBeTruthy();
-    expect(screen.getByText('70')).toBeTruthy();
+// Corta la lista en el top visible y el resto agrupado. La cola es larga (~29
+// solicitantes por squad), asi que el resto se colapsa detras de "Otros N equipos".
+export function splitRequesters(requesters: WorkloadRequester[], topN = 3): SplitRequesters {
+  const top = requesters.slice(0, topN);
+  const rest = requesters.slice(topN);
+  return {
+    top, rest,
+    restPedidos: rest.reduce((s, r) => s + r.pedidos, 0),
+    restPendientes: rest.reduce((s, r) => s + r.pendientes, 0),
+    maxPedidos: requesters.reduce((m, r) => Math.max(m, r.pedidos), 0),
+  };
+}
+
+// Ancho de la barra proporcional al solicitante mas grande del squad.
+export function barPct(pedidos: number, maxPedidos: number): number {
+  return maxPedidos > 0 ? Math.round((pedidos / maxPedidos) * 100) : 0;
+}
+```
+
+Crear `mobile/__tests__/workloadView.test.ts`:
+
+```ts
+import { splitRequesters, barPct } from '../lib/workloadView';
+
+const r = (requester: string | null, pedidos: number, pendientes = 0) => ({ requester, pedidos, pendientes });
+
+describe('splitRequesters', () => {
+  const cinco = [r('Groot', 103, 5), r('Camel Case', 103, 1), r(null, 82, 31),
+                 r('Devengers', 39, 0), r('La Teconeta', 30, 2)];
+
+  it('corta en el top 3 y agrupa el resto con sus totales', () => {
+    const s = splitRequesters(cinco);
+    expect(s.top.map(x => x.requester)).toEqual(['Groot', 'Camel Case', null]);
+    expect(s.rest).toHaveLength(2);
+    expect(s.restPedidos).toBe(69);      // 39 + 30
+    expect(s.restPendientes).toBe(2);    // 0 + 2
   });
 
-  it('muestra solo el top 3 y agrupa el resto', () => {
-    setup();
-    expect(screen.getByText('Groot')).toBeTruthy();
-    expect(screen.queryByText('Devengers')).toBeNull();
-    expect(screen.getByText('Otros 2 equipos')).toBeTruthy();
+  it('con 3 o menos no deja resto', () => {
+    const s = splitRequesters(cinco.slice(0, 3));
+    expect(s.rest).toEqual([]);
+    expect(s.restPedidos).toBe(0);
+    expect(s.restPendientes).toBe(0);
   });
 
-  it('despliega el resto al tocar "Otros N equipos"', () => {
-    setup();
-    fireEvent.press(screen.getByText('Otros 2 equipos'));
-    expect(screen.getByText('Devengers')).toBeTruthy();
-    expect(screen.getByText('La Teconeta')).toBeTruthy();
+  it('sin solicitantes no rompe', () => {
+    const s = splitRequesters([]);
+    expect(s.top).toEqual([]);
+    expect(s.maxPedidos).toBe(0);
   });
 
-  it('renderiza el bucket nulo como "Sin dato"', () => {
-    setup();
-    expect(screen.getByText('Sin dato')).toBeTruthy();
+  it('maxPedidos sale de la lista completa, no solo del top', () => {
+    // Si saliera del top, la barra del resto podria pasarse del 100%.
+    expect(splitRequesters([r('a', 10), r('b', 9), r('c', 8), r('d', 50)]).maxPedidos).toBe(50);
+  });
+});
+
+describe('barPct', () => {
+  it('es proporcional al maximo', () => {
+    expect(barPct(50, 100)).toBe(50);
+    expect(barPct(100, 100)).toBe(100);
   });
 
-  it('avisa que solicitante se toco, con null para el bucket sin dato', () => {
-    const onPress = setup();
-    fireEvent.press(screen.getByText('Groot'));
-    expect(onPress).toHaveBeenCalledWith('Groot');
-    fireEvent.press(screen.getByText('Sin dato'));
-    expect(onPress).toHaveBeenCalledWith(null);
-  });
-
-  it('sin solicitantes no rompe ni muestra la fila de otros', () => {
-    render(<SquadCard squad={{ ...squad, requesters: [] }} rangeLabel="90d" onPressRequester={jest.fn()} />);
-    expect(screen.queryByText(/Otros/)).toBeNull();
+  it('no divide por cero cuando el squad no tiene pedidos', () => {
+    expect(barPct(0, 0)).toBe(0);
   });
 });
 ```
 
-- [ ] **Step 6: Correr los tests para verificar que fallan, después implementar hasta el verde**
+- [ ] **Step 6: Refactorizar `SquadCard` para consumir esas funciones**
 
-Run: `cd mobile && npx jest __tests__/SquadCard.test.tsx`
-Expected primero: FAIL (el componente aún no exporta lo que el test espera). Ajustar
-`SquadCard` hasta que pase — sin cambiar las aserciones para acomodar la implementación.
+`SquadCard` deja de calcular el corte y el porcentaje inline y llama a `splitRequesters` y
+`barPct`. El render no cambia.
+
+Run: `cd mobile && npx jest __tests__/workloadView.test.ts`
+Expected: PASS, 6 tests.
 
 - [ ] **Step 7: Verificar tipos y suite completa**
 
@@ -1498,7 +1524,7 @@ Expected: sin errores de tipos, toda la suite en verde.
 
 ```bash
 git add mobile/hooks/useWorkload.ts mobile/components/SquadCard.tsx \
-        mobile/__tests__/SquadCard.test.tsx \
+        mobile/lib/workloadView.ts mobile/__tests__/workloadView.test.ts \
         "mobile/app/(tabs)/carga.tsx" "mobile/app/(tabs)/_layout.tsx"
 git commit -m "feat(mobile): solapa Carga con tarjeta por squad y cola larga colapsable"
 ```
@@ -1553,65 +1579,58 @@ export async function readWorkloadIssues(db: SQLite.SQLiteDatabase): Promise<Cor
 - Tira de resumen: `{abiertos} abiertos · {estancados} sin arrancar hace +{T}d · {p1} son P1 · más viejo {edad_max}d · mediana {edad_p50}d`. Omitir los tramos cuyo valor sea 0.
 - `FlatList` de `WorkloadIssueRow`, ya ordenada por antigüedad desde el core.
 
-- [ ] **Step 5: Escribir los tests de `WorkloadIssueRow`**
+- [ ] **Step 5: Extraer el umbral de color y testearlo**
 
-Crear `mobile/__tests__/WorkloadIssueRow.test.tsx`. Lo que se testea es la lógica que
-puede romperse en silencio: el umbral de color y el chip condicional de talla.
+> Mismo criterio que la Task 8: RNTL no funciona en este proyecto, así que la lógica que
+> puede romperse en silencio se extrae y se testea pura. No instales nada ni toques jest.
 
-```tsx
-import React from 'react';
-import { render, screen } from '@testing-library/react-native';
-import { WorkloadIssueRow } from '../components/WorkloadIssueRow';
+Agregar a `mobile/lib/workloadView.ts`:
+
+```ts
+import { Colors } from './theme';
+
+// Color de la antiguedad por umbral, multiplos de AGING_THRESHOLD_DAYS (T, default 7):
+// gris hasta 2T, naranja entre 2T y 8T, rojo por encima de 8T.
+export function ageColor(edadDias: number, thresholdDays = 7): string {
+  if (edadDias > thresholdDays * 8) return Colors.error;
+  if (edadDias > thresholdDays * 2) return Colors.warning;
+  return Colors.textMuted;
+}
+```
+
+Agregar a `mobile/__tests__/workloadView.test.ts`:
+
+```ts
+import { ageColor } from '../lib/workloadView';
 import { Colors } from '../lib/theme';
 
-const issue = (over: any = {}) => ({
-  id: 'DPP-1', title: 'Crear el Api-Gateway', status: 'Ready for Development',
-  assignee_id: null, talla: 'M', priority: 'High (P1)',
-  created_at: '2026-06-01T00:00:00.000Z', edad_dias: 5, estancado: false, ...over,
-});
-
-const colorDeLaEdad = (edad_dias: number) => {
-  render(<WorkloadIssueRow issue={issue({ edad_dias })} assigneeName="Fede" />);
-  return screen.getByTestId('edad').props.style.color;
-};
-
-describe('WorkloadIssueRow', () => {
-  it('muestra key, titulo y responsable', () => {
-    render(<WorkloadIssueRow issue={issue()} assigneeName="Fede" />);
-    expect(screen.getByText('DPP-1')).toBeTruthy();
-    expect(screen.getByText('Crear el Api-Gateway')).toBeTruthy();
-    expect(screen.getByText('Fede')).toBeTruthy();
+describe('ageColor', () => {
+  it('gris hasta 2T, naranja entre 2T y 8T, rojo por encima', () => {
+    expect(ageColor(14)).toBe(Colors.textMuted);   // 2T exacto: todavia gris
+    expect(ageColor(15)).toBe(Colors.warning);
+    expect(ageColor(56)).toBe(Colors.warning);     // 8T exacto: todavia naranja
+    expect(ageColor(57)).toBe(Colors.error);
   });
 
-  it('colorea la edad por umbral: gris <=14d, naranja 15-56d, rojo +56d', () => {
-    expect(colorDeLaEdad(14)).toBe(Colors.textMuted);
-    expect(colorDeLaEdad(15)).toBe(Colors.warning);
-    expect(colorDeLaEdad(56)).toBe(Colors.warning);
-    expect(colorDeLaEdad(57)).toBe(Colors.error);
+  it('respeta un umbral distinto del default', () => {
+    expect(ageColor(21, 10)).toBe(Colors.textMuted);   // 21 <= 20? no -> naranja
+    expect(ageColor(19, 10)).toBe(Colors.textMuted);
+    expect(ageColor(81, 10)).toBe(Colors.error);
   });
 
-  it('omite el chip de talla cuando el issue no esta clasificado', () => {
-    render(<WorkloadIssueRow issue={issue({ talla: 'L' })} assigneeName="Fede" />);
-    expect(screen.getByText('L')).toBeTruthy();
-    screen.unmount();
-    render(<WorkloadIssueRow issue={issue({ talla: null })} assigneeName="Fede" />);
-    expect(screen.queryByTestId('talla')).toBeNull();
-  });
-
-  it('sin responsable muestra "sin asignar"', () => {
-    render(<WorkloadIssueRow issue={issue()} assigneeName={null} />);
-    expect(screen.getByText('sin asignar')).toBeTruthy();
+  it('edad cero es gris', () => {
+    expect(ageColor(0)).toBe(Colors.textMuted);
   });
 });
 ```
 
-El componente debe exponer `testID="edad"` en el texto de la antigüedad y `testID="talla"`
-en el chip de talla para que estas aserciones funcionen.
+- [ ] **Step 6: Usar `ageColor` en `WorkloadIssueRow`**
 
-- [ ] **Step 6: Correr los tests para verificar que fallan, después implementar hasta el verde**
+La fila consume `ageColor(issue.edad_dias)` en vez de calcular el umbral inline. El chip de
+talla se sigue omitiendo cuando `issue.talla` es `null`.
 
-Run: `cd mobile && npx jest __tests__/WorkloadIssueRow.test.tsx`
-Expected primero: FAIL. Implementar hasta el verde sin relajar las aserciones.
+Run: `cd mobile && npx jest __tests__/workloadView.test.ts`
+Expected: PASS.
 
 - [ ] **Step 7: Verificar tipos y suite completa**
 
@@ -1622,7 +1641,7 @@ Expected: sin errores, toda la suite en verde.
 
 ```bash
 git add "mobile/app/requester" mobile/hooks/useRequesterDetail.ts \
-        mobile/components/WorkloadIssueRow.tsx mobile/__tests__/WorkloadIssueRow.test.tsx \
+        mobile/components/WorkloadIssueRow.tsx mobile/lib/workloadView.ts mobile/__tests__/workloadView.test.ts \
         mobile/lib/db.ts
 git commit -m "feat(mobile): drill-down de solicitante con resumen y orden por antiguedad"
 ```
