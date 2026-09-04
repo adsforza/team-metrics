@@ -95,13 +95,25 @@ export async function runSync(db: Database.Database): Promise<SyncResult> {
 
     upsertBatch();
 
-    // Update per-board last sync timestamp and board name
-    for (const client of clients) {
-      const name = await client.fetchBoardName();
-      db.prepare(`INSERT INTO board_sync (board_id, last_synced_at, name) VALUES (?,?,?)
-                  ON CONFLICT(board_id) DO UPDATE SET last_synced_at=excluded.last_synced_at,
-                  name=COALESCE(excluded.name, board_sync.name)`).run(client.boardId, syncedAt, name);
-    }
+    // Marcas por board: primero TODA la red (un solo Promise.all, sin llamadas
+    // seriales), despues una unica transaccion. Escribirlas de a una con un await
+    // adentro del loop dejaba marcas divergentes si la red fallaba a mitad: el sync
+    // siguiente iba incremental con `updatedSince` distinto por board, un issue
+    // compartido actualizado en el medio volvia de un solo board y `boards=excluded.boards`
+    // le borraba el otro. Mismo agujero de procedencia que cerro 927487e, por otra puerta.
+    // Todo o nada: si fetchBoardName falla, no se escribe ninguna marca y el delta del
+    // proximo sync queda igual que antes (idempotente), en vez de quedar desalineado.
+    const boardNames = await Promise.all(clients.map(c => c.fetchBoardName()));
+    const markBoards = db.transaction(() => {
+      const stmt = db.prepare(
+        `INSERT INTO board_sync (board_id, last_synced_at, name) VALUES (?,?,?)
+         ON CONFLICT(board_id) DO UPDATE SET last_synced_at=excluded.last_synced_at,
+         name=COALESCE(excluded.name, board_sync.name)`);
+      for (let i = 0; i < clients.length; i++) {
+        stmt.run(clients[i].boardId, syncedAt, boardNames[i]);
+      }
+    });
+    markBoards();
 
     db.prepare(`UPDATE sync_log SET finished_at=?, synced_count=?, classified_count=? WHERE id=?`)
       .run(new Date().toISOString(), synced_count, classified_count, logId);

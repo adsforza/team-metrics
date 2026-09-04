@@ -168,6 +168,36 @@ describe('runSync — carga de trabajo', () => {
     expect(row.talla).toBe('L');            // y la talla sobrevive al conflicto
   });
 
+  it('pide los nombres de todos los boards en paralelo, no de a uno', async () => {
+    // El board 9536 solo puede terminar si el 9534 sigue pendiente: con un
+    // `await c.fetchBoardName()` adentro del loop esto no avanza nunca.
+    let resolve9534: (v: string) => void = () => {};
+    clients[0].fetchBoardName = vi.fn(() => new Promise<string>(r => { resolve9534 = r; }));
+    clients[1].fetchBoardName = vi.fn(async () => {
+      resolve9534('Black Team Infra');
+      return 'Blue Team Infra';
+    });
+    const { runSync: run } = await import('./sync');
+    await run(db);
+    const rows = db.prepare(`SELECT board_id, name FROM board_sync ORDER BY board_id`).all() as any[];
+    expect(rows).toEqual([
+      { board_id: 9534, name: 'Black Team Infra' },
+      { board_id: 9536, name: 'Blue Team Infra' },
+    ]);
+  });
+
+  it('si falla el nombre de un board no queda ninguna marca escrita', async () => {
+    // Marcas divergentes = el sync siguiente va incremental con `updatedSince` distinto
+    // por board y `boards=excluded.boards` le borra la procedencia a un issue compartido.
+    // Por eso es todo o nada: ni siquiera se escribe la del board que si respondio.
+    clients[1].fetchBoardName = vi.fn().mockRejectedValue(new Error('jira 500'));
+    const { runSync: run } = await import('./sync');
+    await expect(run(db)).rejects.toThrow('jira 500');
+    expect(db.prepare(`SELECT board_id FROM board_sync`).all()).toEqual([]);
+    const log = db.prepare(`SELECT error FROM sync_log ORDER BY id DESC LIMIT 1`).get() as any;
+    expect(log.error).toBe('jira 500');
+  });
+
   it('guarda el nombre de cada board en board_sync', async () => {
     const { runSync: run } = await import('./sync');
     await run(db);
