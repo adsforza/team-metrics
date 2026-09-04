@@ -1,11 +1,23 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { BottomTabHeaderProps } from '@react-navigation/bottom-tabs';
 import { Colors } from '../lib/theme';
 import { SyncHeader } from './SyncHeader';
 import { DateRangeBar } from './DateRangeBar';
 
-export function TabHeader({ options, route }: BottomTabHeaderProps) {
+// Antes esto importaba BottomTabHeaderProps de '@react-navigation/bottom-tabs', que
+// no es dependencia del proyecto ni esta en node_modules. Compilaba de casualidad
+// -era type-only, asi que se borraba al emitir- pero dejaba `tsc --noEmit` en rojo
+// de forma permanente, inutilizando el typecheck del mobile como gate.
+// expo-router trae react-navigation bundleado pero no reexporta el tipo por su
+// entrada publica, y tomarlo de su ruta interna de build seria fragil. Se declara
+// aca lo unico que este componente consume: por tipado estructural, los props reales
+// que pasa expo-router lo satisfacen.
+type TabHeaderProps = {
+  options: { title?: string };
+  route: { name: string };
+};
+
+export function TabHeader({ options, route }: TabHeaderProps) {
   const insets = useSafeAreaInsets();
   const title = options.title ?? route.name;
 
