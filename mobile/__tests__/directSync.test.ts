@@ -7,6 +7,7 @@ jest.mock('../lib/db', () => ({
   loadCoreIssues: jest.fn(),
   loadCoreTransitions: jest.fn(),
   loadCoreMembers: jest.fn(),
+  listBoardSync: jest.fn().mockResolvedValue([]),
 }));
 
 jest.mock('../lib/snapshots', () => ({
@@ -22,7 +23,7 @@ import {
 import { writeSnapshots } from '../lib/snapshots';
 import type { JiraHttp } from '@teammetrics/core/jira';
 import type { GenerateFn } from '@teammetrics/core/classify';
-import type { CoreIssueWithTitle, CoreTransition, CoreMember } from '@teammetrics/core/types';
+import type { CoreIssueWorkload, CoreTransition, CoreMember } from '@teammetrics/core/types';
 
 const NOW = new Date('2026-07-01T00:00:00Z');
 const dbStub = { __marker: 'db' } as any;
@@ -44,8 +45,9 @@ function jiraApiIssue(key: string, summary: string) {
   };
 }
 
-const coreIssues: CoreIssueWithTitle[] = [
-  { id: 'A', title: 'Issue A', status: 'To Do', assignee_id: null, talla: null, created_at: '2026-06-01T00:00:00Z', last_transition_at: null },
+const coreIssues: CoreIssueWorkload[] = [
+  { id: 'A', title: 'Issue A', status: 'To Do', assignee_id: null, talla: null, created_at: '2026-06-01T00:00:00Z', last_transition_at: null,
+    requester: null, priority: null, boards: [] },
 ];
 const coreTransitions: CoreTransition[] = [];
 const coreMembers: CoreMember[] = [];

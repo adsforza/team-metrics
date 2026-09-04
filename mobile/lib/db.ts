@@ -324,6 +324,17 @@ export async function setBoardLastSync(db: SQLite.SQLiteDatabase, boardId: numbe
   );
 }
 
+// Boards conocidos por directSync para computeWorkload. board_sync no tiene columna de
+// nombre (a diferencia de su contraparte server): el mobile nunca lo resuelve contra
+// Jira, así que el llamador siempre completa el fallback "Board {id}". board_id 0 es el
+// sentinela de `performSync` (crudo del server, ver getRawSince) y no un board real.
+export async function listBoardSync(db: SQLite.SQLiteDatabase): Promise<{ id: number }[]> {
+  const rows = await db.getAllAsync<{ board_id: number }>(
+    'SELECT board_id FROM board_sync WHERE board_id != 0'
+  );
+  return rows.map(r => ({ id: r.board_id }));
+}
+
 export interface RawIssue {
   id: string; title: string; description: string; status: string;
   assignee_id: string | null; talla: string | null; talla_confidence: number | null;

@@ -1,21 +1,24 @@
 import { computeBundle } from '../lib/directSync';
 import { readUnclassifiedIssues, updateIssueTallas } from '../lib/db';
-import type { CoreIssueWithTitle, CoreTransition, CoreMember } from '@teammetrics/core/types';
+import type { CoreIssueWorkload, CoreTransition, CoreMember } from '@teammetrics/core/types';
 
 const NOW = new Date('2026-07-01T00:00:00Z');
 
-const issues: CoreIssueWithTitle[] = [
+const issues: CoreIssueWorkload[] = [
   {
     id: 'A', title: 'Issue A', status: 'Done', assignee_id: 'u1', talla: 'M',
     created_at: '2026-06-01T00:00:00Z', last_transition_at: '2026-06-05T00:00:00Z',
+    requester: null, priority: null, boards: [],
   },
   {
     id: 'B', title: 'Issue B', status: 'In Progress', assignee_id: 'u2', talla: 'L',
     created_at: '2026-06-10T00:00:00Z', last_transition_at: '2026-06-11T00:00:00Z',
+    requester: null, priority: null, boards: [],
   },
   {
     id: 'C', title: 'Issue C', status: 'To Do', assignee_id: null, talla: null,
     created_at: '2026-06-15T00:00:00Z', last_transition_at: '2026-06-15T00:00:00Z',
+    requester: null, priority: null, boards: [],
   },
 ];
 
@@ -84,6 +87,18 @@ describe('computeBundle', () => {
     const strip = (b: typeof b1) => ({ ...b, forecast: undefined });
     expect(strip(b1)).toEqual(strip(b2));
     expect(b1.forecast!.insufficientData).toBe(b2.forecast!.insufficientData);
+  });
+
+  it('incluye workload en el bundle', () => {
+    const bundle = computeBundle(
+      [{ id: 'A', title: 't', status: 'Backlog', assignee_id: null, talla: null,
+         created_at: '2026-06-10T00:00:00.000Z', last_transition_at: null,
+         requester: 'Groot', priority: null, boards: [9534] } as any],
+      [], [], { from: '2026-06-01', to: '2026-06-30' },
+      new Date('2026-06-30T00:00:00.000Z'),
+      [{ id: 9534, name: 'Black Team Infra' }],
+    );
+    expect(bundle.workload!.squads[0].requesters[0].requester).toBe('Groot');
   });
 });
 
