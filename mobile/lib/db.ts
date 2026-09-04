@@ -240,15 +240,25 @@ export async function upsertRawIssues(db: SQLite.SQLiteDatabase, issues: JiraIss
       const lastTransition = issue.transitions.length
         ? issue.transitions.reduce((a, b) => (a.transitioned_at > b.transitioned_at ? a : b)).transitioned_at
         : null;
+      const prev = await db.getFirstAsync<{ boards: string | null }>(
+        `SELECT boards FROM issues WHERE id = ?`, [issue.id]);
+      const merged = [...new Set([
+        ...(prev?.boards ? prev.boards.split(',').map(Number) : []),
+        ...(issue.boards ?? []),
+      ])].filter(n => !isNaN(n)).sort((a, b) => a - b).join(',');
       // Note: talla/talla_confidence intentionally omitted — new issues default NULL and the
       // ON CONFLICT SET does not touch them (classification is a separate step).
       await db.runAsync(
-        `INSERT INTO issues (id, title, description, status, assignee_id, created_at, updated_at, last_transition_at)
-         VALUES (?,?,?,?,?,?,?,?)
+        `INSERT INTO issues (id, title, description, status, assignee_id, created_at, updated_at,
+                             last_transition_at, requester, boards, priority)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)
          ON CONFLICT(id) DO UPDATE SET
            title=excluded.title, description=excluded.description, status=excluded.status,
-           assignee_id=excluded.assignee_id, updated_at=excluded.updated_at, last_transition_at=excluded.last_transition_at`,
-        [issue.id, issue.title, issue.description, issue.status, issue.assignee?.id ?? null, issue.created_at, issue.updated_at, lastTransition]
+           assignee_id=excluded.assignee_id, updated_at=excluded.updated_at,
+           last_transition_at=excluded.last_transition_at,
+           requester=excluded.requester, boards=excluded.boards, priority=excluded.priority`,
+        [issue.id, issue.title, issue.description, issue.status, issue.assignee?.id ?? null,
+         issue.created_at, issue.updated_at, lastTransition, issue.requester ?? null, merged, issue.priority ?? null]
       );
       for (const t of issue.transitions) {
         const exists = await db.getFirstAsync(

@@ -15,6 +15,7 @@ const issue = (over: Partial<JiraIssueRaw> = {}): JiraIssueRaw => ({
   id: 'OPS-1', title: 'T', description: 'D', status: 'In Progress',
   assignee: { id: 'u1', display_name: 'Ana', email: 'a@t.com', avatar_url: null },
   created_at: 'c', updated_at: 'u',
+  requester: null, priority: null, boards: [],
   transitions: [
     { from_status: 'To Do', to_status: 'In Progress', transitioned_at: '2026-01-02T00:00:00Z' },
     { from_status: 'In Progress', to_status: 'Done', transitioned_at: '2026-01-05T00:00:00Z' },
@@ -51,6 +52,41 @@ describe('upsertRawIssues', () => {
     const { db, runs } = stubDb();
     await upsertRawIssues(db, [issue({ assignee: null })]);
     expect(runs.find(r => r.sql.includes('team_members'))).toBeUndefined();
+  });
+
+  it('persiste requester, priority y boards en el upsert', async () => {
+    const { db, runs } = stubDb();
+    await upsertRawIssues(db, [issue({ requester: 'Groot', priority: 'High (P1)', boards: [9534] })]);
+    const issueSql = runs.find(r => r.sql.includes('INTO issues'))!;
+    expect(issueSql.sql).toMatch(/requester/);
+    expect(issueSql.sql).toMatch(/boards/);
+    expect(issueSql.sql).toMatch(/priority/);
+    expect(issueSql.args).toContain('Groot');
+    expect(issueSql.args).toContain('High (P1)');
+    expect(issueSql.args).toContain('9534');
+    expect(issueSql.sql).not.toMatch(/talla/);   // la talla sigue sin tocarse
+  });
+
+  it('mergea boards con lo ya guardado en vez de pisarlo', async () => {
+    // getFirstAsync se usa para dos cosas en upsertRawIssues: leer los boards previos
+    // del issue y dedupear transiciones. Solo respondemos a la primera.
+    const runs: { sql: string; args: any[] }[] = [];
+    const db: any = {
+      withTransactionAsync: async (fn: any) => { await fn(); },
+      runAsync: async (sql: string, args: any[] = []) => { runs.push({ sql, args }); },
+      getFirstAsync: async (sql: string) =>
+        sql.includes('boards') ? { boards: '9534' } : null,
+    };
+    await upsertRawIssues(db, [issue({ boards: [9536], transitions: [] })]);
+    const issueSql = runs.find(r => r.sql.includes('INTO issues'))!;
+    expect(issueSql.args).toContain('9534,9536');   // union, ordenada
+  });
+
+  it('sin boards previos guarda solo los de la corrida', async () => {
+    const { db, runs } = stubDb();   // su getFirstAsync devuelve null siempre
+    await upsertRawIssues(db, [issue({ boards: [9536] })]);
+    const issueSql = runs.find(r => r.sql.includes('INTO issues'))!;
+    expect(issueSql.args).toContain('9536');
   });
 });
 
