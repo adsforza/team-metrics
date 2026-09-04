@@ -4,8 +4,9 @@ import type {
   WipRiskResult, BottleneckResult, ForecastResult,
   ComparisonResult, CFDPoint, Issue, TeamScorecardResponse, TallaMetric,
 } from './types';
-import type { CoreIssueWithTitle, CoreTransition, CoreMember } from '@teammetrics/core/types';
+import type { CoreIssueWorkload, CoreTransition, CoreMember } from '@teammetrics/core/types';
 import type { JiraIssueRaw } from '@teammetrics/core/jira';
+import type { WorkloadResult } from '@teammetrics/core/workload';
 
 let _db: SQLite.SQLiteDatabase | null = null;
 
@@ -62,6 +63,9 @@ async function initSchema(db: SQLite.SQLiteDatabase): Promise<void> {
     CREATE TABLE IF NOT EXISTS by_talla_snapshot (
       id INTEGER PRIMARY KEY DEFAULT 1, result_json TEXT, synced_at TEXT
     );
+    CREATE TABLE IF NOT EXISTS workload_snapshot (
+      id INTEGER PRIMARY KEY DEFAULT 1, result_json TEXT, synced_at TEXT
+    );
     CREATE TABLE IF NOT EXISTS issues (
       id TEXT PRIMARY KEY, title TEXT, description TEXT, status TEXT,
       assignee_id TEXT, talla TEXT, talla_confidence REAL,
@@ -81,8 +85,13 @@ async function initSchema(db: SQLite.SQLiteDatabase): Promise<void> {
   `);
 
   const issueCols = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(issues)`);
-  if (!issueCols.some(c => c.name === 'talla_pushed')) {
-    await db.execAsync(`ALTER TABLE issues ADD COLUMN talla_pushed INTEGER NOT NULL DEFAULT 0`);
+  for (const [col, ddl] of [
+    ['talla_pushed', `ALTER TABLE issues ADD COLUMN talla_pushed INTEGER NOT NULL DEFAULT 0`],
+    ['requester',    `ALTER TABLE issues ADD COLUMN requester TEXT`],
+    ['boards',       `ALTER TABLE issues ADD COLUMN boards TEXT`],
+    ['priority',     `ALTER TABLE issues ADD COLUMN priority TEXT`],
+  ] as const) {
+    if (!issueCols.some(c => c.name === col)) await db.execAsync(ddl);
   }
 }
 
@@ -123,6 +132,11 @@ export async function readAgingIssues(db: SQLite.SQLiteDatabase): Promise<AgingI
 
 export async function readWipRisk(db: SQLite.SQLiteDatabase): Promise<WipRiskResult | null> {
   const row = await db.getFirstAsync<{ result_json: string }>('SELECT result_json FROM wip_risk_snapshot WHERE id = 1');
+  return row ? JSON.parse(row.result_json) : null;
+}
+
+export async function readWorkload(db: SQLite.SQLiteDatabase): Promise<WorkloadResult | null> {
+  const row = await db.getFirstAsync<{ result_json: string }>('SELECT result_json FROM workload_snapshot WHERE id = 1');
   return row ? JSON.parse(row.result_json) : null;
 }
 
@@ -191,10 +205,12 @@ export async function hasData(db: SQLite.SQLiteDatabase): Promise<boolean> {
   return row !== null;
 }
 
-export function loadCoreIssues(db: SQLite.SQLiteDatabase): Promise<CoreIssueWithTitle[]> {
-  return db.getAllAsync<CoreIssueWithTitle>(
-    'SELECT id, title, status, assignee_id, talla, created_at, last_transition_at FROM issues'
+export async function loadCoreIssues(db: SQLite.SQLiteDatabase): Promise<CoreIssueWorkload[]> {
+  const rows = await db.getAllAsync<any>(
+    `SELECT id, title, status, assignee_id, talla, created_at, last_transition_at,
+            requester, priority, boards FROM issues`
   );
+  return rows.map(r => ({ ...r, boards: r.boards ? String(r.boards).split(',').map(Number) : [] }));
 }
 
 export function loadCoreTransitions(db: SQLite.SQLiteDatabase): Promise<CoreTransition[]> {

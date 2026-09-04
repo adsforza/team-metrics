@@ -990,44 +990,60 @@ git commit -m "feat(server): endpoints GET /api/workload y /api/workload/detail"
 
 - [ ] **Step 1: Escribir los tests que fallan**
 
-Agregar a `mobile/__tests__/rawWriters.test.ts`:
+> **La suite del mobile no tiene SQLite real.** `mobile/__tests__/rawWriters.test.ts` usa
+> un stub a mano (`stubDb()`) que registra los SQL emitidos y sus argumentos; no hay
+> `expo-sqlite` bajo jest. Los tests de abajo siguen ese patrón: verifican **qué SQL se
+> emite y con qué parámetros**, no el estado final de una base. No intentes levantar una
+> base real ni agregar `better-sqlite3` al mobile.
+
+Agregar a `mobile/__tests__/rawWriters.test.ts`, reusando el `stubDb()` y el helper
+`issue()` que ya existen al tope del archivo:
 
 ```ts
-it('guarda requester, priority y boards, y mergea boards entre syncs', async () => {
-  const db = await getDb();
-  await upsertRawIssues(db, [{
-    id: 'DPP-1', title: 't', description: '', status: 'Backlog', assignee: null,
-    requester: 'Groot', priority: 'High (P1)', boards: [9534],
-    created_at: '2026-06-01T00:00:00.000Z', updated_at: '2026-06-01T00:00:00.000Z', transitions: [],
-  } as any]);
-  await upsertRawIssues(db, [{
-    id: 'DPP-1', title: 't', description: '', status: 'Backlog', assignee: null,
-    requester: 'Groot', priority: 'High (P1)', boards: [9536],
-    created_at: '2026-06-01T00:00:00.000Z', updated_at: '2026-06-01T00:00:00.000Z', transitions: [],
-  } as any]);
-  const row = await db.getFirstAsync<any>(`SELECT requester, priority, boards FROM issues WHERE id='DPP-1'`);
-  expect(row.requester).toBe('Groot');
-  expect(row.priority).toBe('High (P1)');
-  expect(row.boards.split(',').map(Number).sort()).toEqual([9534, 9536]);
+it('persiste requester, priority y boards en el upsert', async () => {
+  const { db, runs } = stubDb();
+  await upsertRawIssues(db, [issue({ requester: 'Groot', priority: 'High (P1)', boards: [9534] })]);
+  const issueSql = runs.find(r => r.sql.includes('INTO issues'))!;
+  expect(issueSql.sql).toMatch(/requester/);
+  expect(issueSql.sql).toMatch(/boards/);
+  expect(issueSql.sql).toMatch(/priority/);
+  expect(issueSql.args).toContain('Groot');
+  expect(issueSql.args).toContain('High (P1)');
+  expect(issueSql.args).toContain('9534');
+  expect(issueSql.sql).not.toMatch(/talla/);   // la talla sigue sin tocarse
 });
 
-it('no pisa una talla ya clasificada al reescribir el issue', async () => {
-  const db = await getDb();
-  const base = { id: 'DPP-9', title: 't', description: '', status: 'Backlog', assignee: null,
-    requester: null, priority: null, boards: [9534],
-    created_at: '2026-06-01T00:00:00.000Z', updated_at: '2026-06-01T00:00:00.000Z', transitions: [] };
-  await upsertRawIssues(db, [base as any]);
-  await db.runAsync(`UPDATE issues SET talla='L' WHERE id='DPP-9'`);
-  await upsertRawIssues(db, [base as any]);
-  const row = await db.getFirstAsync<any>(`SELECT talla FROM issues WHERE id='DPP-9'`);
-  expect(row.talla).toBe('L');
+it('mergea boards con lo ya guardado en vez de pisarlo', async () => {
+  // getFirstAsync se usa para dos cosas en upsertRawIssues: leer los boards previos
+  // del issue y dedupear transiciones. Solo respondemos a la primera.
+  const runs: { sql: string; args: any[] }[] = [];
+  const db: any = {
+    withTransactionAsync: async (fn: any) => { await fn(); },
+    runAsync: async (sql: string, args: any[] = []) => { runs.push({ sql, args }); },
+    getFirstAsync: async (sql: string) =>
+      sql.includes('boards') ? { boards: '9534' } : null,
+  };
+  await upsertRawIssues(db, [issue({ boards: [9536], transitions: [] })]);
+  const issueSql = runs.find(r => r.sql.includes('INTO issues'))!;
+  expect(issueSql.args).toContain('9534,9536');   // union, ordenada
+});
+
+it('sin boards previos guarda solo los de la corrida', async () => {
+  const { db, runs } = stubDb();   // su getFirstAsync devuelve null siempre
+  await upsertRawIssues(db, [issue({ boards: [9536] })]);
+  const issueSql = runs.find(r => r.sql.includes('INTO issues'))!;
+  expect(issueSql.args).toContain('9536');
 });
 ```
+
+El helper `issue()` del archivo tiene que aceptar los campos nuevos: agregá
+`requester: null, priority: null, boards: []` a su objeto base para que el tipo
+`JiraIssueRaw` quede completo.
 
 - [ ] **Step 2: Correr los tests para verificar que fallan**
 
 Run: `cd mobile && npx jest __tests__/rawWriters.test.ts`
-Expected: FAIL — `no such column: requester`.
+Expected: FAIL — el SQL emitido todavía no incluye `requester`/`boards`/`priority`.
 
 - [ ] **Step 3: Implementar**
 
