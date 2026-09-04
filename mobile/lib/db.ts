@@ -218,6 +218,11 @@ export async function loadCoreIssues(db: SQLite.SQLiteDatabase): Promise<CoreIss
   return rows.map(r => ({ ...r, boards: r.boards ? String(r.boards).split(',').map(Number) : [] }));
 }
 
+// Mismo crudo/query que loadCoreIssues (usado por directSync): nombre propio para el
+// drill-down de solicitante, que lee la tabla `issues` directo — sin snapshot ni
+// endpoint — así el detalle funciona offline.
+export const readWorkloadIssues = loadCoreIssues;
+
 export function loadCoreTransitions(db: SQLite.SQLiteDatabase): Promise<CoreTransition[]> {
   return db.getAllAsync<CoreTransition>(
     'SELECT issue_id, from_status, to_status, transitioned_at FROM transitions'

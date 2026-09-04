@@ -1,4 +1,5 @@
-import { splitRequesters, barPct } from '../lib/workloadView';
+import { splitRequesters, barPct, ageColor } from '../lib/workloadView';
+import { Colors } from '../lib/theme';
 
 const r = (requester: string | null, pedidos: number, pendientes = 0) => ({ requester, pedidos, pendientes });
 
@@ -41,5 +42,27 @@ describe('barPct', () => {
 
   it('no divide por cero cuando el squad no tiene pedidos', () => {
     expect(barPct(0, 0)).toBe(0);
+  });
+});
+
+describe('ageColor', () => {
+  it('gris hasta 2T, naranja entre 2T y 8T, rojo por encima', () => {
+    expect(ageColor(14)).toBe(Colors.textMuted);   // 2T exacto: todavia gris
+    expect(ageColor(15)).toBe(Colors.warning);
+    expect(ageColor(56)).toBe(Colors.warning);     // 8T exacto: todavia naranja
+    expect(ageColor(57)).toBe(Colors.error);
+  });
+
+  it('respeta un umbral distinto del default', () => {
+    // Bug en el brief original: la aserción de esta línea decía Colors.textMuted,
+    // contradiciendo su propio comentario ("-> naranja") y la implementación de
+    // ageColor (21 > 2*10 => warning). Corregido a Colors.warning.
+    expect(ageColor(21, 10)).toBe(Colors.warning);   // 21 > 20 -> naranja
+    expect(ageColor(19, 10)).toBe(Colors.textMuted);
+    expect(ageColor(81, 10)).toBe(Colors.error);
+  });
+
+  it('edad cero es gris', () => {
+    expect(ageColor(0)).toBe(Colors.textMuted);
   });
 });

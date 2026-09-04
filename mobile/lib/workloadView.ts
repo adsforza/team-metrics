@@ -1,4 +1,5 @@
 import type { WorkloadRequester } from '@teammetrics/core/workload';
+import { Colors } from './theme';
 
 export interface SplitRequesters {
   top: WorkloadRequester[];
@@ -24,4 +25,12 @@ export function splitRequesters(requesters: WorkloadRequester[], topN = 3): Spli
 // Ancho de la barra proporcional al solicitante mas grande del squad.
 export function barPct(pedidos: number, maxPedidos: number): number {
   return maxPedidos > 0 ? Math.round((pedidos / maxPedidos) * 100) : 0;
+}
+
+// Color de la antiguedad por umbral, multiplos de AGING_THRESHOLD_DAYS (T, default 7):
+// gris hasta 2T, naranja entre 2T y 8T, rojo por encima de 8T.
+export function ageColor(edadDias: number, thresholdDays = 7): string {
+  if (edadDias > thresholdDays * 8) return Colors.error;
+  if (edadDias > thresholdDays * 2) return Colors.warning;
+  return Colors.textMuted;
 }
