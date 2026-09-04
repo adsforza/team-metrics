@@ -136,3 +136,22 @@ export function startSyncJob(): void {
     runSync(getDb()).catch(err => console.error('Sync failed:', err));
   });
 }
+
+// Entry point de `npm run sync`. Sin esto el script solo definia funciones y salia
+// sin sincronizar nada, aunque el comando esta documentado como sync manual: por eso
+// un server caido dejaba la base atrasada sin forma de rescatarla a mano.
+// Corre fuera de index.ts, asi que tiene que cargar el .env e inicializar la DB por
+// su cuenta antes de que createJiraClients() lea las credenciales de process.env.
+if (require.main === module) {
+  (async () => {
+    const dotenv = await import('dotenv');
+    const path = await import('path');
+    dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+    const { initDb } = await import('../db/index');
+    const result = await runSync(initDb());
+    console.log(`Sync OK: ${result.synced_count} issues`);
+  })().catch(err => {
+    console.error('Sync failed:', err.message);
+    process.exit(1);
+  });
+}
