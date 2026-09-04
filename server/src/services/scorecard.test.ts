@@ -16,7 +16,8 @@ function seedIssue(
 ) {
   const lastStatus = transitions.length ? transitions[transitions.length - 1][0] : 'To Do';
   const lastAt = transitions.length ? transitions[transitions.length - 1][1] : created;
-  db.prepare(`INSERT INTO issues VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+  db.prepare(`INSERT INTO issues (id, title, description, status, assignee_id, talla, talla_confidence,
+    created_at, updated_at, synced_at, last_transition_at, talla_updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     id, `Issue ${id}`, '', lastStatus, assignee, talla, 0.9, created, lastAt, '2026-06-20T00:00:00Z', lastAt, null,
   );
   for (const [to, at] of transitions) {

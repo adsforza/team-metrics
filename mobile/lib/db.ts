@@ -4,8 +4,11 @@ import type {
   WipRiskResult, BottleneckResult, ForecastResult,
   ComparisonResult, CFDPoint, Issue, TeamScorecardResponse, TallaMetric,
 } from './types';
-import type { CoreIssueWithTitle, CoreTransition, CoreMember } from '@teammetrics/core/types';
+import type { CoreIssueWorkload, CoreTransition, CoreMember } from '@teammetrics/core/types';
 import type { JiraIssueRaw } from '@teammetrics/core/jira';
+import type { WorkloadResult } from '@teammetrics/core/workload';
+// Mismo parser que usa el server para la columna `boards`: ver parseBoardsColumn.
+import { parseBoardsColumn } from '@teammetrics/core/workload';
 
 let _db: SQLite.SQLiteDatabase | null = null;
 
@@ -62,6 +65,9 @@ async function initSchema(db: SQLite.SQLiteDatabase): Promise<void> {
     CREATE TABLE IF NOT EXISTS by_talla_snapshot (
       id INTEGER PRIMARY KEY DEFAULT 1, result_json TEXT, synced_at TEXT
     );
+    CREATE TABLE IF NOT EXISTS workload_snapshot (
+      id INTEGER PRIMARY KEY DEFAULT 1, result_json TEXT, synced_at TEXT
+    );
     CREATE TABLE IF NOT EXISTS issues (
       id TEXT PRIMARY KEY, title TEXT, description TEXT, status TEXT,
       assignee_id TEXT, talla TEXT, talla_confidence REAL,
@@ -81,8 +87,18 @@ async function initSchema(db: SQLite.SQLiteDatabase): Promise<void> {
   `);
 
   const issueCols = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(issues)`);
-  if (!issueCols.some(c => c.name === 'talla_pushed')) {
-    await db.execAsync(`ALTER TABLE issues ADD COLUMN talla_pushed INTEGER NOT NULL DEFAULT 0`);
+  for (const [col, ddl] of [
+    ['talla_pushed', `ALTER TABLE issues ADD COLUMN talla_pushed INTEGER NOT NULL DEFAULT 0`],
+    ['requester',    `ALTER TABLE issues ADD COLUMN requester TEXT`],
+    ['boards',       `ALTER TABLE issues ADD COLUMN boards TEXT`],
+    ['priority',     `ALTER TABLE issues ADD COLUMN priority TEXT`],
+  ] as const) {
+    if (!issueCols.some(c => c.name === col)) await db.execAsync(ddl);
+  }
+
+  const boardCols = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(board_sync)`);
+  if (!boardCols.some(c => c.name === 'name')) {
+    await db.execAsync(`ALTER TABLE board_sync ADD COLUMN name TEXT`);
   }
 }
 
@@ -123,6 +139,11 @@ export async function readAgingIssues(db: SQLite.SQLiteDatabase): Promise<AgingI
 
 export async function readWipRisk(db: SQLite.SQLiteDatabase): Promise<WipRiskResult | null> {
   const row = await db.getFirstAsync<{ result_json: string }>('SELECT result_json FROM wip_risk_snapshot WHERE id = 1');
+  return row ? JSON.parse(row.result_json) : null;
+}
+
+export async function readWorkload(db: SQLite.SQLiteDatabase): Promise<WorkloadResult | null> {
+  const row = await db.getFirstAsync<{ result_json: string }>('SELECT result_json FROM workload_snapshot WHERE id = 1');
   return row ? JSON.parse(row.result_json) : null;
 }
 
@@ -191,11 +212,18 @@ export async function hasData(db: SQLite.SQLiteDatabase): Promise<boolean> {
   return row !== null;
 }
 
-export function loadCoreIssues(db: SQLite.SQLiteDatabase): Promise<CoreIssueWithTitle[]> {
-  return db.getAllAsync<CoreIssueWithTitle>(
-    'SELECT id, title, status, assignee_id, talla, created_at, last_transition_at FROM issues'
+export async function loadCoreIssues(db: SQLite.SQLiteDatabase): Promise<CoreIssueWorkload[]> {
+  const rows = await db.getAllAsync<any>(
+    `SELECT id, title, status, assignee_id, talla, created_at, last_transition_at,
+            requester, priority, boards FROM issues`
   );
+  return rows.map(r => ({ ...r, boards: parseBoardsColumn(r.boards) }));
 }
+
+// Mismo crudo/query que loadCoreIssues (usado por directSync): nombre propio para el
+// drill-down de solicitante, que lee la tabla `issues` directo — sin snapshot ni
+// endpoint — así el detalle funciona offline.
+export const readWorkloadIssues = loadCoreIssues;
 
 export function loadCoreTransitions(db: SQLite.SQLiteDatabase): Promise<CoreTransition[]> {
   return db.getAllAsync<CoreTransition>(
@@ -224,15 +252,25 @@ export async function upsertRawIssues(db: SQLite.SQLiteDatabase, issues: JiraIss
       const lastTransition = issue.transitions.length
         ? issue.transitions.reduce((a, b) => (a.transitioned_at > b.transitioned_at ? a : b)).transitioned_at
         : null;
+      const prev = await db.getFirstAsync<{ boards: string | null }>(
+        `SELECT boards FROM issues WHERE id = ?`, [issue.id]);
+      const merged = [...new Set([
+        ...parseBoardsColumn(prev?.boards),
+        ...(issue.boards ?? []),
+      ])].filter(n => !isNaN(n)).sort((a, b) => a - b).join(',');
       // Note: talla/talla_confidence intentionally omitted — new issues default NULL and the
       // ON CONFLICT SET does not touch them (classification is a separate step).
       await db.runAsync(
-        `INSERT INTO issues (id, title, description, status, assignee_id, created_at, updated_at, last_transition_at)
-         VALUES (?,?,?,?,?,?,?,?)
+        `INSERT INTO issues (id, title, description, status, assignee_id, created_at, updated_at,
+                             last_transition_at, requester, boards, priority)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)
          ON CONFLICT(id) DO UPDATE SET
            title=excluded.title, description=excluded.description, status=excluded.status,
-           assignee_id=excluded.assignee_id, updated_at=excluded.updated_at, last_transition_at=excluded.last_transition_at`,
-        [issue.id, issue.title, issue.description, issue.status, issue.assignee?.id ?? null, issue.created_at, issue.updated_at, lastTransition]
+           assignee_id=excluded.assignee_id, updated_at=excluded.updated_at,
+           last_transition_at=excluded.last_transition_at,
+           requester=excluded.requester, boards=excluded.boards, priority=excluded.priority`,
+        [issue.id, issue.title, issue.description, issue.status, issue.assignee?.id ?? null,
+         issue.created_at, issue.updated_at, lastTransition, issue.requester ?? null, merged, issue.priority ?? null]
       );
       for (const t of issue.transitions) {
         const exists = await db.getFirstAsync(
@@ -290,22 +328,45 @@ export async function getBoardLastSync(db: SQLite.SQLiteDatabase, boardId: numbe
   return row?.last_synced_at;
 }
 
-export async function setBoardLastSync(db: SQLite.SQLiteDatabase, boardId: number, iso: string): Promise<void> {
+export async function setBoardLastSync(
+  db: SQLite.SQLiteDatabase, boardId: number, iso: string, name?: string | null,
+): Promise<void> {
   await db.runAsync(
-    `INSERT INTO board_sync (board_id, last_synced_at) VALUES (?,?)
-     ON CONFLICT(board_id) DO UPDATE SET last_synced_at=excluded.last_synced_at`,
-    [boardId, iso]
+    `INSERT INTO board_sync (board_id, last_synced_at, name) VALUES (?,?,?)
+     ON CONFLICT(board_id) DO UPDATE SET last_synced_at=excluded.last_synced_at,
+     name=COALESCE(excluded.name, board_sync.name)`,
+    [boardId, iso, name ?? null]
   );
+}
+
+// Boards conocidos por directSync para computeWorkload. board_id 0 es el sentinela de
+// `performSync` (crudo del server, ver getRawSince) y no un board real.
+export async function listBoardSync(db: SQLite.SQLiteDatabase): Promise<{ id: number; name: string | null }[]> {
+  const rows = await db.getAllAsync<{ board_id: number; name: string | null }>(
+    'SELECT board_id, name FROM board_sync WHERE board_id != 0'
+  );
+  return rows.map(r => ({ id: r.board_id, name: r.name }));
 }
 
 export interface RawIssue {
   id: string; title: string; description: string; status: string;
   assignee_id: string | null; talla: string | null; talla_confidence: number | null;
   created_at: string; updated_at: string; last_transition_at: string | null;
+  // Columnas de carga de trabajo. El drill-down por solicitante lee la tabla `issues`
+  // local (para andar offline), asi que si no viajan en el crudo del server quedan
+  // NULL en backend mode y el detalle sale vacio con el server arriba.
+  requester: string | null; boards: string | null; priority: string | null;
 }
 export interface RawTransition { issue_id: string; from_status: string; to_status: string; transitioned_at: string }
 export interface RawMember { id: string; display_name: string; email: string | null; avatar_url: string | null }
-export interface RawBundle { issues: RawIssue[]; transitions: RawTransition[]; members: RawMember[]; serverSyncedAt: string | null }
+// Los nombres de board tambien vienen del server: `board_sync.name` solo lo escribia
+// directSync, y en backend mode el header del drill-down quedaba sin squad.
+export interface RawBoard { board_id: number; name: string | null }
+export interface RawBundle {
+  issues: RawIssue[]; transitions: RawTransition[]; members: RawMember[];
+  boards?: RawBoard[];
+  serverSyncedAt: string | null;
+}
 
 export async function upsertServerRaw(db: SQLite.SQLiteDatabase, bundle: RawBundle): Promise<void> {
   await db.withTransactionAsync(async () => {
@@ -316,18 +377,31 @@ export async function upsertServerRaw(db: SQLite.SQLiteDatabase, bundle: RawBund
         [m.id, m.display_name, m.email, m.avatar_url],
       );
     }
+    // Nombres de board del server. Solo el `name`: `last_synced_at` es el cursor de
+    // direct mode y no se toca desde aca (el crudo del server lleva su propio
+    // sentinela, board_sync[0]).
+    for (const b of bundle.boards ?? []) {
+      await db.runAsync(
+        `INSERT INTO board_sync (board_id, name) VALUES (?,?)
+         ON CONFLICT(board_id) DO UPDATE SET name=COALESCE(excluded.name, board_sync.name)`,
+        [b.board_id, b.name ?? null],
+      );
+    }
     for (const i of bundle.issues) {
       const pushed = i.talla != null ? 1 : 0;
       await db.runAsync(
-        `INSERT INTO issues (id, title, description, status, assignee_id, talla, talla_confidence, created_at, updated_at, last_transition_at, talla_pushed)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        `INSERT INTO issues (id, title, description, status, assignee_id, talla, talla_confidence, created_at, updated_at, last_transition_at, requester, boards, priority, talla_pushed)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
          ON CONFLICT(id) DO UPDATE SET
            title=excluded.title, description=excluded.description, status=excluded.status,
            assignee_id=excluded.assignee_id, updated_at=excluded.updated_at, last_transition_at=excluded.last_transition_at,
+           requester=excluded.requester, boards=excluded.boards, priority=excluded.priority,
            talla=COALESCE(excluded.talla, issues.talla),
            talla_confidence=COALESCE(excluded.talla_confidence, issues.talla_confidence),
            talla_pushed=CASE WHEN excluded.talla IS NOT NULL THEN 1 ELSE issues.talla_pushed END`,
-        [i.id, i.title, i.description, i.status, i.assignee_id, i.talla, i.talla_confidence, i.created_at, i.updated_at, i.last_transition_at, pushed],
+        [i.id, i.title, i.description, i.status, i.assignee_id, i.talla, i.talla_confidence,
+         i.created_at, i.updated_at, i.last_transition_at,
+         i.requester ?? null, i.boards ?? null, i.priority ?? null, pushed],
       );
     }
     for (const t of bundle.transitions) {
@@ -356,9 +430,15 @@ export async function getRawSince(db: SQLite.SQLiteDatabase, boardId: number): P
   return board > sentinel ? board : sentinel;
 }
 
-// Borra todos los cursores de sync (por-board + sentinela 0). El próximo sync baja TODO
+// Resetea todos los cursores de sync (por-board + sentinela 0). El próximo sync baja TODO
 // de Jira/server (sin `since`), backfilleando updates que el delta se hubiera saltado
 // (p.ej. issues cambiados durante una caída del sync). Escape hatch ante gaps del delta.
+// Es un UPDATE, no un DELETE: la fila tambien guarda el `name` del board (lo unico que
+// le da su nombre al squad en la pantalla de carga) y borrarla lo perdia hasta el
+// proximo sync. La epoch cae antes de cualquier issue, asi que equivale a "sin marca"
+// para el filtro incremental sin tirar el nombre.
+export const BOARD_SYNC_EPOCH = '1970-01-01T00:00:00.000Z';
+
 export async function clearAllBoardSync(db: SQLite.SQLiteDatabase): Promise<void> {
-  await db.runAsync('DELETE FROM board_sync');
+  await db.runAsync(`UPDATE board_sync SET last_synced_at = ?`, [BOARD_SYNC_EPOCH]);
 }

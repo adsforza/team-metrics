@@ -4,6 +4,7 @@ import type {
   WipRiskResult, BottleneckResult, ForecastResult, ComparisonResult,
   CFDPoint, TallaMetric,
 } from '@teammetrics/core/types';
+import type { WorkloadResult } from '@teammetrics/core/workload';
 import type { Issue } from './types';
 
 export interface SnapshotBundle {
@@ -19,6 +20,7 @@ export interface SnapshotBundle {
   byTalla?: TallaMetric[];
   comparisonWeeks?: string[];
   comparisons?: { week: string; result: ComparisonResult }[];
+  workload?: WorkloadResult;
 }
 
 export async function writeSnapshots(db: SQLite.SQLiteDatabase, bundle: SnapshotBundle, syncedAt: string): Promise<void> {
@@ -74,6 +76,7 @@ export async function writeSnapshots(db: SQLite.SQLiteDatabase, bundle: Snapshot
       [bundle.wipRisk, 'wip_risk_snapshot'],
       [bundle.bottleneck, 'bottleneck_snapshot'],
       [bundle.forecast, 'forecast_snapshot'],
+      [bundle.workload, 'workload_snapshot'],
     ] as const) {
       if (value !== undefined) {
         await db.runAsync(

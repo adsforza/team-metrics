@@ -10,6 +10,7 @@ import type {
   WipRiskResult, BottleneckResult, ForecastResult, ComparisonResult,
   CFDPoint, Issue, TallaMetric,
 } from './types';
+import type { WorkloadResult } from '@teammetrics/core/workload';
 import { writeSnapshots, type SnapshotBundle } from './snapshots';
 
 import { getLastNMondays } from './weeks';
@@ -53,7 +54,7 @@ export async function performSync(dateParams?: { from: string; to: string }, ass
 
   const mondays = getLastNMondays(6);
   onProgress?.({ label: 'Bajando métricas…' });
-  const [kpi, throughput, team, aging, wipRisk, bottleneck, forecast, cfd, issues, byTalla] =
+  const [kpi, throughput, team, aging, wipRisk, bottleneck, forecast, cfd, issues, byTalla, workload] =
     await Promise.allSettled([
       fetchJson<KPIMetrics>(`${baseUrl}/api/metrics${qs}`),
       fetchJson<ThroughputWeek[]>(`${baseUrl}/api/metrics/throughput${qs}`),
@@ -65,6 +66,7 @@ export async function performSync(dateParams?: { from: string; to: string }, ass
       fetchJson<CFDPoint[]>(`${baseUrl}/api/metrics/cfd${qs}`),
       fetchJson<Issue[]>(`${baseUrl}/api/issues${qs}`),
       fetchJson<TallaMetric[]>(`${baseUrl}/api/metrics/by-talla${qs}`),
+      fetchJson<WorkloadResult>(`${baseUrl}/api/workload${qs}`),
     ]);
   const comparisons = await Promise.allSettled(
     mondays.map(w => {
@@ -83,6 +85,7 @@ export async function performSync(dateParams?: { from: string; to: string }, ass
   if (cfd.status !== 'fulfilled') errors.push({ endpoint: '/api/metrics/cfd', message: String(cfd.reason) });
   if (issues.status !== 'fulfilled') errors.push({ endpoint: '/api/issues', message: String(issues.reason) });
   if (byTalla.status !== 'fulfilled') errors.push({ endpoint: '/api/metrics/by-talla', message: String(byTalla.reason) });
+  if (workload.status !== 'fulfilled') errors.push({ endpoint: '/api/workload', message: String(workload.reason) });
   for (let i = 0; i < comparisons.length; i++) {
     const c = comparisons[i];
     if (c.status !== 'fulfilled') {
@@ -101,6 +104,7 @@ export async function performSync(dateParams?: { from: string; to: string }, ass
     cfd: cfd.status === 'fulfilled' ? cfd.value : undefined,
     issues: issues.status === 'fulfilled' ? issues.value : undefined,
     byTalla: byTalla.status === 'fulfilled' ? byTalla.value : undefined,
+    workload: workload.status === 'fulfilled' ? workload.value : undefined,
     comparisonWeeks: mondays,
     comparisons: comparisons.flatMap(c => c.status === 'fulfilled' ? [{ week: c.value.week, result: c.value }] : []),
   };
@@ -122,7 +126,7 @@ export async function performSync(dateParams?: { from: string; to: string }, ass
   }
 
   const allResults = [
-    kpi, throughput, team, aging, wipRisk, bottleneck, forecast, cfd, issues, byTalla,
+    kpi, throughput, team, aging, wipRisk, bottleneck, forecast, cfd, issues, byTalla, workload,
     ...comparisons,
   ];
   const okCount = allResults.filter(r => r.status === 'fulfilled').length;

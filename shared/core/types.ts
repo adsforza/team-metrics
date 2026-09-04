@@ -7,6 +7,13 @@ export interface CoreIssue {
 // CoreIssue + title, for computations that need it (e.g. aging WIP) without
 // forcing every CoreIssue producer/consumer to carry a title field.
 export interface CoreIssueWithTitle extends CoreIssue { title: string }
+// CoreIssueWithTitle + las dimensiones de carga de trabajo. Mismo criterio que
+// CoreIssueWithTitle: no obligar a todo productor de CoreIssue a cargar campos que no usa.
+export interface CoreIssueWorkload extends CoreIssueWithTitle {
+  requester: string | null;
+  priority: string | null;
+  boards: number[];
+}
 export interface CoreTransition {
   issue_id: string; from_status: string | null; to_status: string; transitioned_at: string;
 }

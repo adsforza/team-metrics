@@ -1,4 +1,4 @@
-import type { JiraHttp } from '@teammetrics/core/jira';
+import type { JiraConfig, JiraHttp } from '@teammetrics/core/jira';
 import type { GenerateFn } from '@teammetrics/core/classify';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
@@ -41,6 +41,19 @@ export const jiraHttpFetch: JiraHttp = async ({ url, auth, params }) => {
   }
   return res.json();
 };
+
+// Espeja a JiraClient.fetchBoardName del server. El nombre es cosmetico: si Jira
+// falla o devuelve un payload raro se degrada a null y el sync sigue.
+export async function fetchBoardNameDirect(cfg: JiraConfig, http: JiraHttp = jiraHttpFetch): Promise<string | null> {
+  try {
+    const data = await http({
+      url: `${cfg.baseUrl}/rest/agile/1.0/board/${cfg.boardId}`,
+      auth: { username: cfg.email, password: cfg.apiToken }, params: {},
+    });
+    const name = (data as any)?.name;
+    return typeof name === 'string' ? name : null;
+  } catch { return null; }
+}
 
 // Alias "-latest": Google retira las versiones fijas (gemini-2.0-flash-lite dejó de
 // existir y devolvía 404), el alias siempre apunta al flash-lite vigente.

@@ -1,0 +1,160 @@
+import { categorize } from './statusCategories';
+import { median } from './stats'; // reusar el p50 que ya usa cycle_time_p50
+import type { CoreIssueWorkload, Talla } from './types';
+
+export interface WorkloadRequester { requester: string | null; pedidos: number; pendientes: number; }
+export interface WorkloadSquad {
+  board_id: number; name: string;
+  pedidos: number; pendientes: number;
+  requesters: WorkloadRequester[];
+}
+export interface WorkloadResult {
+  squads: WorkloadSquad[];
+  totals: { pedidos: number; pendientes: number; compartidos: number };
+}
+
+// Parser unico de la columna `boards` (CSV de ids, p.ej. '9534,9536'). Vive aca porque
+// la leen dos bases distintas — la del server (better-sqlite3) y la del mobile
+// (expo-sqlite) — y tenerlo duplicado ya habia dejado dos comportamientos: el server
+// filtraba NaN pero dejaba pasar '' (que Number convierte en 0, un board_id falso), el
+// mobile no filtraba nada. Un solo parser para que el mismo string signifique lo mismo
+// en las dos mitades.
+export function parseBoardsColumn(raw: unknown): number[] {
+  if (raw === null || raw === undefined || raw === '') return [];
+  return String(raw)
+    .split(',')
+    .filter(s => s !== '')
+    .map(Number)
+    .filter(n => !isNaN(n));
+}
+
+// Pendiente = todo lo que no esta terminado ni cancelado. Deliberadamente NO se
+// filtra por rango: un ticket abierto hace ocho meses sigue pesando hoy.
+export function isPendiente(status: string): boolean {
+  const c = categorize(status);
+  return c !== 'done' && c !== 'cancelled';
+}
+
+function enRango(created_at: string, from?: string, to?: string): boolean {
+  const d = created_at.slice(0, 10);
+  if (from && d < from) return false;
+  if (to && d > to) return false;
+  return true;
+}
+
+export function computeWorkload(
+  issues: CoreIssueWorkload[],
+  boards: { id: number; name: string }[],
+  params: { from?: string; to?: string },
+): WorkloadResult {
+  const known = new Set(boards.map(b => b.id));
+  const acc = new Map<number, Map<string | null, WorkloadRequester>>();
+  for (const b of boards) acc.set(b.id, new Map());
+
+  let totalPedidos = 0, totalPendientes = 0, compartidos = 0;
+
+  for (const issue of issues) {
+    const mine = issue.boards.filter(b => known.has(b));
+    if (mine.length === 0) continue;
+
+    const esPedido = enRango(issue.created_at, params.from, params.to);
+    const esPend = isPendiente(issue.status);
+    if (!esPedido && !esPend) continue;
+
+    // compartidos se cuenta DESPUES del filtro, a proposito: el numero existe para
+    // explicar por que la suma de los squads supera al total en pantalla, asi que
+    // solo puede contar issues que efectivamente se muestran. Contarlo antes hace
+    // que un ticket viejo y cerrado presente en los dos boards infle el contador
+    // sin que haya ninguna fila a la que atribuirselo.
+    if (mine.length > 1) compartidos++;
+
+    if (esPedido) totalPedidos++;
+    if (esPend) totalPendientes++;
+
+    for (const boardId of mine) {
+      const bucket = acc.get(boardId)!;
+      // Map admite null como clave, asi que el bucket "sin dato" no necesita
+      // un centinela de string que podria colisionar con un equipo real.
+      let row = bucket.get(issue.requester);
+      if (!row) {
+        row = { requester: issue.requester, pedidos: 0, pendientes: 0 };
+        bucket.set(issue.requester, row);
+      }
+      if (esPedido) row.pedidos++;
+      if (esPend) row.pendientes++;
+    }
+  }
+
+  const squads: WorkloadSquad[] = boards.map(b => {
+    const rows = [...acc.get(b.id)!.values()].sort((x, y) =>
+      y.pedidos - x.pedidos || (x.requester ?? '').localeCompare(y.requester ?? ''));
+    return {
+      board_id: b.id, name: b.name,
+      pedidos: rows.reduce((s, r) => s + r.pedidos, 0),
+      pendientes: rows.reduce((s, r) => s + r.pendientes, 0),
+      requesters: rows,
+    };
+  });
+
+  return { squads, totals: { pedidos: totalPedidos, pendientes: totalPendientes, compartidos } };
+}
+
+export interface WorkloadIssue {
+  id: string; title: string; status: string;
+  assignee_id: string | null; talla: Talla | null; priority: string | null;
+  created_at: string; edad_dias: number; estancado: boolean;
+}
+export interface RequesterDetail {
+  issues: WorkloadIssue[];
+  resumen: { abiertos: number; estancados: number; p1: number; edad_max: number; edad_p50: number };
+}
+
+const MS_DAY = 86_400_000;
+const P1_PRIORITIES = ['Highest (P0)', 'High (P1)', 'Mandatorio'];
+
+export function computeRequesterDetail(
+  issues: CoreIssueWorkload[],
+  params: {
+    board_id: number; requester: string | null;
+    scope: 'pendientes' | 'todos';
+    from?: string; to?: string;
+    agingThresholdDays: number; now: Date;
+  },
+): RequesterDetail {
+  const t = params.now.getTime();
+
+  const rows: WorkloadIssue[] = issues
+    .filter(i => i.boards.includes(params.board_id) && i.requester === params.requester)
+    .filter(i => params.scope === 'pendientes'
+      ? isPendiente(i.status)
+      : isPendiente(i.status) || enRango(i.created_at, params.from, params.to))
+    .map(i => {
+      const edad_dias = Math.floor((t - new Date(i.created_at).getTime()) / MS_DAY);
+      const cat = categorize(i.status);
+      const nuncaArranco = cat === 'todo' || cat === 'waiting';
+      return {
+        id: i.id, title: i.title, status: i.status,
+        assignee_id: i.assignee_id, talla: i.talla, priority: i.priority,
+        created_at: i.created_at, edad_dias,
+        estancado: nuncaArranco && edad_dias > params.agingThresholdDays,
+      };
+    })
+    .sort((a, b) => b.edad_dias - a.edad_dias || a.id.localeCompare(b.id));
+
+  const abiertos = rows.filter(r => isPendiente(r.status));
+  return {
+    issues: rows,
+    // El resumen describe SIEMPRE lo pendiente, aunque en scope 'todos' la lista
+    // incluya cerrados: es un diagnostico de lo que se sigue debiendo. Calcularlo
+    // sobre `rows` haria que la tira diga "1 abierto - 1 es P1 - mas viejo 300d"
+    // cuando el unico abierto tiene 5 dias y no es P1.
+    resumen: {
+      abiertos: abiertos.length,
+      estancados: abiertos.filter(r => r.estancado).length,
+      p1: abiertos.filter(r => r.priority !== null && P1_PRIORITIES.includes(r.priority)).length,
+      edad_max: abiertos.reduce((m, r) => Math.max(m, r.edad_dias), 0),
+      // Sin redondear: misma definicion de p50 que cycle_time_p50. La UI formatea.
+      edad_p50: median(abiertos.map(r => r.edad_dias)) ?? 0,
+    },
+  };
+}

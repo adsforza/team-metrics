@@ -239,6 +239,15 @@ describe('computeWorkload', () => {
     expect(r.totals.compartidos).toBe(1);
   });
 
+  it('no cuenta como compartido un issue que no se muestra en ningun squad', () => {
+    // Ticket viejo y cerrado presente en los dos boards: ni pedido (fuera de rango)
+    // ni pendiente (done). No debe inflar compartidos, porque no hay fila que explicar.
+    const r = computeWorkload([iss({ id: 'A', boards: [9534, 9536],
+      status: 'Finalizada', created_at: '2020-01-01T00:00:00.000Z' })], BOARDS, RANGE);
+    expect(r.totals).toEqual({ pedidos: 0, pendientes: 0, compartidos: 0 });
+    expect(r.squads.every(s => s.requesters.length === 0)).toBe(true);
+  });
+
   it('agrupa el requester nulo en un bucket propio', () => {
     const r = computeWorkload([
       iss({ id: 'A', requester: null }),
@@ -341,11 +350,17 @@ export function computeWorkload(
   for (const issue of issues) {
     const mine = issue.boards.filter(b => known.has(b));
     if (mine.length === 0) continue;
-    if (mine.length > 1) compartidos++;
 
     const esPedido = enRango(issue.created_at, params.from, params.to);
     const esPend = isPendiente(issue.status);
     if (!esPedido && !esPend) continue;
+
+    // compartidos se cuenta DESPUES del filtro, a proposito: el numero existe para
+    // explicar por que la suma de los squads supera al total en pantalla, asi que
+    // solo puede contar issues que efectivamente se muestran. Contarlo antes hace
+    // que un ticket viejo y cerrado presente en los dos boards infle el contador
+    // sin que haya ninguna fila a la que atribuirselo.
+    if (mine.length > 1) compartidos++;
 
     if (esPedido) totalPedidos++;
     if (esPend) totalPendientes++;
@@ -382,7 +397,7 @@ export function computeWorkload(
 - [ ] **Step 4: Correr el test**
 
 Run: `cd shared/core && npx vitest run workload.test.ts`
-Expected: PASS, 9 tests.
+Expected: PASS, 10 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -460,6 +475,17 @@ describe('computeRequesterDetail', () => {
     expect(r.resumen.edad_p50).toBe(25);
   });
 
+  it('en scope todos, el resumen describe solo lo abierto, no lo cerrado', () => {
+    const r = computeRequesterDetail([
+      iss({ id: 'ABIERTO', status: 'Backlog', created_at: dias(5), priority: 'Low (P3)' }),
+      iss({ id: 'CERRADO', status: 'Finalizada', created_at: dias(300), priority: 'High (P1)' }),
+    ], { ...P, scope: 'todos', from: '2020-01-01', to: '2026-06-30' });
+    expect(r.issues.map(i => i.id)).toEqual(['CERRADO', 'ABIERTO']);  // la lista si los muestra
+    expect(r.resumen.abiertos).toBe(1);
+    expect(r.resumen.p1).toBe(0);        // el P1 esta cerrado: no se debe nada
+    expect(r.resumen.edad_max).toBe(5);  // 5d del abierto, no 300d del cerrado
+  });
+
   it('el bucket sin dato se pide con requester null', () => {
     const r = computeRequesterDetail([iss({ id: 'A', requester: null, created_at: dias(5) })],
       { ...P, requester: null });
@@ -485,6 +511,7 @@ Agregar a `shared/core/workload.ts`:
 
 ```ts
 import type { Talla } from './types';
+import { median } from './stats';   // reusar el p50 que ya usa cycle_time_p50
 
 export interface WorkloadIssue {
   id: string; title: string; status: string;
@@ -498,13 +525,6 @@ export interface RequesterDetail {
 
 const MS_DAY = 86_400_000;
 const P1_PRIORITIES = ['Highest (P0)', 'High (P1)', 'Mandatorio'];
-
-function mediana(xs: number[]): number {
-  if (xs.length === 0) return 0;
-  const s = [...xs].sort((a, b) => a - b);
-  const m = Math.floor(s.length / 2);
-  return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2);
-}
 
 export function computeRequesterDetail(
   issues: CoreIssueWorkload[],
@@ -535,15 +555,20 @@ export function computeRequesterDetail(
     })
     .sort((a, b) => b.edad_dias - a.edad_dias || a.id.localeCompare(b.id));
 
-  const abiertosRows = rows.filter(r => isPendiente(r.status));
+  const abiertos = rows.filter(r => isPendiente(r.status));
   return {
     issues: rows,
+    // El resumen describe SIEMPRE lo pendiente, aunque en scope 'todos' la lista
+    // incluya cerrados: es un diagnostico de lo que se sigue debiendo. Calcularlo
+    // sobre `rows` haria que la tira diga "1 abierto - 1 es P1 - mas viejo 300d"
+    // cuando el unico abierto tiene 5 dias y no es P1.
     resumen: {
-      abiertos: abiertosRows.length,
-      estancados: rows.filter(r => r.estancado).length,
-      p1: rows.filter(r => r.priority !== null && P1_PRIORITIES.includes(r.priority)).length,
-      edad_max: rows.length ? Math.max(...rows.map(r => r.edad_dias)) : 0,
-      edad_p50: mediana(rows.map(r => r.edad_dias)),
+      abiertos: abiertos.length,
+      estancados: abiertos.filter(r => r.estancado).length,
+      p1: abiertos.filter(r => r.priority !== null && P1_PRIORITIES.includes(r.priority)).length,
+      edad_max: abiertos.reduce((m, r) => Math.max(m, r.edad_dias), 0),
+      // Sin redondear: misma definicion de p50 que cycle_time_p50. La UI formatea.
+      edad_p50: median(abiertos.map(r => r.edad_dias)) ?? 0,
     },
   };
 }
@@ -552,7 +577,7 @@ export function computeRequesterDetail(
 - [ ] **Step 4: Correr el test**
 
 Run: `cd shared/core && npx vitest run workload.test.ts`
-Expected: PASS, 15 tests en total.
+Expected: PASS, 16 tests en total (10 de la Task 2 + 6 nuevos).
 
 - [ ] **Step 5: Commit**
 
@@ -644,9 +669,34 @@ describe('runSync — carga de trabajo', () => {
     const a = db.prepare(`SELECT requester, priority, boards FROM issues WHERE id='DPP-1'`).get() as any;
     expect(a.requester).toBe('Tony Stack');
     expect(a.priority).toBe('High (P1)');
-    expect(a.boards.split(',').map(Number).sort((x: number, y: number) => x - y)).toEqual([9534, 9536]);
+    // String exacto, no re-ordenado: asi el test detecta si se dejara de ordenar.
+    expect(a.boards).toBe('9534,9536');
     const b = db.prepare(`SELECT boards FROM issues WHERE id='DPP-2'`).get() as any;
     expect(b.boards).toBe('9536');
+  });
+
+  it('un board nuevo fuerza sync completo de todos los boards', async () => {
+    // 9534 ya venia sincronizando; 9536 se agrega recien ahora. Si 9534 fuera
+    // incremental, un issue compartido sin cambios volveria solo desde 9536 y el
+    // ON CONFLICT le borraria el 9534.
+    db.prepare(`INSERT INTO board_sync (board_id, last_synced_at) VALUES (9534, '2026-01-01T00:00:00.000Z')`).run();
+    const { runSync: run } = await import('./sync');
+    await run(db);
+    const { createJiraClients } = await import('./jira');
+    for (const c of createJiraClients()) {
+      expect(c.fetchIssues).toHaveBeenCalledWith(undefined);   // full sync, no incremental
+    }
+  });
+
+  it('el ON CONFLICT refleja la membresia de la corrida, no la acumulada', async () => {
+    // Ejerce la rama ON CONFLICT, que el test de arriba nunca toca (base fresca = INSERT).
+    db.prepare(`INSERT INTO issues (id, title, description, status, created_at, updated_at, synced_at, boards, talla)
+                VALUES ('DPP-1','t','','Backlog','2026-01-01','2026-01-01','2026-01-01','9534','L')`).run();
+    const { runSync: run } = await import('./sync');
+    await run(db);
+    const row = db.prepare(`SELECT boards, talla FROM issues WHERE id='DPP-1'`).get() as any;
+    expect(row.boards).toBe('9534,9536');   // la corrida lo trae de ambos
+    expect(row.talla).toBe('L');            // y la talla sobrevive al conflicto
   });
 
   it('guarda el nombre de cada board en board_sync', async () => {
@@ -697,7 +747,33 @@ En `server/src/services/sync.ts`, reemplazar `const issues = issueArrays.flat();
 
 con el import `import { mergeIssuesByBoard } from '../../../shared/core/jira';`.
 
-En el `INSERT ... ON CONFLICT` de issues, agregar las tres columnas. `boards` se une con lo ya guardado en vez de pisarse:
+**Garantizar que las marcas de sync no diverjan.** El `ON CONFLICT` pisa `boards` con lo
+que trae la corrida (ver más abajo), y eso es correcto **solo si** cada issue lo ven todos
+sus boards en la misma corrida. Como `last_synced_at` es por board, un board recién
+agregado a `JIRA_BOARD_IDS` baja el histórico completo mientras los viejos bajan solo lo
+modificado: un issue compartido y sin cambios recientes volvería desde un solo board y
+perdería el otro. Es justo el escenario de rollout de esta feature.
+
+Reemplazar el bloque de fetch de `sync.ts` por:
+
+```ts
+    const lastSyncs = clients.map(c => (db.prepare(
+      `SELECT last_synced_at FROM board_sync WHERE board_id = ?`
+    ).get(c.boardId) as any)?.last_synced_at as string | undefined);
+
+    // Si algun board es nuevo (sin marca previa), se resincroniza TODO completo.
+    // Con marcas divergentes un issue compartido vuelve desde un solo board y el
+    // ON CONFLICT le borra el otro. El full sync garantiza la precondicion que
+    // mergeIssuesByBoard necesita para armar la procedencia completa.
+    const hayBoardNuevo = lastSyncs.some(s => !s);
+    const issueArrays = await Promise.all(
+      clients.map((c, i) => c.fetchIssues(hayBoardNuevo ? undefined : lastSyncs[i])));
+```
+
+En el `INSERT ... ON CONFLICT` de issues, agregar las tres columnas. `boards` se pisa con
+el valor de la corrida — con la garantía de arriba eso siempre refleja la membresía real,
+y además auto-limpia cuando un issue sale de un board (mergear dejaría un squad fantasma
+para siempre, sin mecanismo de expiración):
 
 ```ts
         db.prepare(`
@@ -730,6 +806,11 @@ Guardar el nombre del board. En `server/src/services/jira.ts`, agregar a `JiraCl
         auth: { username: this.cfg.email, password: this.cfg.apiToken }, params: {},
       });
       return (data as any)?.name ?? null;
+      // Guarda de tipo: si Jira devolviera `name` como objeto o array, better-sqlite3
+      // tira al bindearlo FUERA de este catch y voltea el sync entero por un dato
+      // cosmetico. El catch cubre el fallo de red; esto cubre el payload inesperado.
+      const name = (data as any)?.name;
+      return typeof name === 'string' ? name : null;
     } catch { return null; }   // el nombre es cosmetico: no debe romper el sync
   }
 ```
@@ -909,44 +990,60 @@ git commit -m "feat(server): endpoints GET /api/workload y /api/workload/detail"
 
 - [ ] **Step 1: Escribir los tests que fallan**
 
-Agregar a `mobile/__tests__/rawWriters.test.ts`:
+> **La suite del mobile no tiene SQLite real.** `mobile/__tests__/rawWriters.test.ts` usa
+> un stub a mano (`stubDb()`) que registra los SQL emitidos y sus argumentos; no hay
+> `expo-sqlite` bajo jest. Los tests de abajo siguen ese patrón: verifican **qué SQL se
+> emite y con qué parámetros**, no el estado final de una base. No intentes levantar una
+> base real ni agregar `better-sqlite3` al mobile.
+
+Agregar a `mobile/__tests__/rawWriters.test.ts`, reusando el `stubDb()` y el helper
+`issue()` que ya existen al tope del archivo:
 
 ```ts
-it('guarda requester, priority y boards, y mergea boards entre syncs', async () => {
-  const db = await getDb();
-  await upsertRawIssues(db, [{
-    id: 'DPP-1', title: 't', description: '', status: 'Backlog', assignee: null,
-    requester: 'Groot', priority: 'High (P1)', boards: [9534],
-    created_at: '2026-06-01T00:00:00.000Z', updated_at: '2026-06-01T00:00:00.000Z', transitions: [],
-  } as any]);
-  await upsertRawIssues(db, [{
-    id: 'DPP-1', title: 't', description: '', status: 'Backlog', assignee: null,
-    requester: 'Groot', priority: 'High (P1)', boards: [9536],
-    created_at: '2026-06-01T00:00:00.000Z', updated_at: '2026-06-01T00:00:00.000Z', transitions: [],
-  } as any]);
-  const row = await db.getFirstAsync<any>(`SELECT requester, priority, boards FROM issues WHERE id='DPP-1'`);
-  expect(row.requester).toBe('Groot');
-  expect(row.priority).toBe('High (P1)');
-  expect(row.boards.split(',').map(Number).sort()).toEqual([9534, 9536]);
+it('persiste requester, priority y boards en el upsert', async () => {
+  const { db, runs } = stubDb();
+  await upsertRawIssues(db, [issue({ requester: 'Groot', priority: 'High (P1)', boards: [9534] })]);
+  const issueSql = runs.find(r => r.sql.includes('INTO issues'))!;
+  expect(issueSql.sql).toMatch(/requester/);
+  expect(issueSql.sql).toMatch(/boards/);
+  expect(issueSql.sql).toMatch(/priority/);
+  expect(issueSql.args).toContain('Groot');
+  expect(issueSql.args).toContain('High (P1)');
+  expect(issueSql.args).toContain('9534');
+  expect(issueSql.sql).not.toMatch(/talla/);   // la talla sigue sin tocarse
 });
 
-it('no pisa una talla ya clasificada al reescribir el issue', async () => {
-  const db = await getDb();
-  const base = { id: 'DPP-9', title: 't', description: '', status: 'Backlog', assignee: null,
-    requester: null, priority: null, boards: [9534],
-    created_at: '2026-06-01T00:00:00.000Z', updated_at: '2026-06-01T00:00:00.000Z', transitions: [] };
-  await upsertRawIssues(db, [base as any]);
-  await db.runAsync(`UPDATE issues SET talla='L' WHERE id='DPP-9'`);
-  await upsertRawIssues(db, [base as any]);
-  const row = await db.getFirstAsync<any>(`SELECT talla FROM issues WHERE id='DPP-9'`);
-  expect(row.talla).toBe('L');
+it('mergea boards con lo ya guardado en vez de pisarlo', async () => {
+  // getFirstAsync se usa para dos cosas en upsertRawIssues: leer los boards previos
+  // del issue y dedupear transiciones. Solo respondemos a la primera.
+  const runs: { sql: string; args: any[] }[] = [];
+  const db: any = {
+    withTransactionAsync: async (fn: any) => { await fn(); },
+    runAsync: async (sql: string, args: any[] = []) => { runs.push({ sql, args }); },
+    getFirstAsync: async (sql: string) =>
+      sql.includes('boards') ? { boards: '9534' } : null,
+  };
+  await upsertRawIssues(db, [issue({ boards: [9536], transitions: [] })]);
+  const issueSql = runs.find(r => r.sql.includes('INTO issues'))!;
+  expect(issueSql.args).toContain('9534,9536');   // union, ordenada
+});
+
+it('sin boards previos guarda solo los de la corrida', async () => {
+  const { db, runs } = stubDb();   // su getFirstAsync devuelve null siempre
+  await upsertRawIssues(db, [issue({ boards: [9536] })]);
+  const issueSql = runs.find(r => r.sql.includes('INTO issues'))!;
+  expect(issueSql.args).toContain('9536');
 });
 ```
+
+El helper `issue()` del archivo tiene que aceptar los campos nuevos: agregá
+`requester: null, priority: null, boards: []` a su objeto base para que el tipo
+`JiraIssueRaw` quede completo.
 
 - [ ] **Step 2: Correr los tests para verificar que fallan**
 
 Run: `cd mobile && npx jest __tests__/rawWriters.test.ts`
-Expected: FAIL — `no such column: requester`.
+Expected: FAIL — el SQL emitido todavía no incluye `requester`/`boards`/`priority`.
 
 - [ ] **Step 3: Implementar**
 
@@ -1134,6 +1231,127 @@ git commit -m "feat(mobile): workload en computeBundle y en los dos caminos de s
 
 ---
 
+### Task 7b: Mobile — nombre real del board en direct mode
+
+**Files:**
+- Modify: `mobile/lib/db.ts`
+- Modify: `mobile/lib/transports.ts`
+- Modify: `mobile/lib/directSync.ts`
+- Test: `mobile/__tests__/transports.test.ts`, `mobile/__tests__/directSync.test.ts`
+
+**Interfaces:**
+- Consumes: `jiraHttpFetch` de `mobile/lib/transports.ts`, `listBoardSync` de la Task 7.
+- Produces: `fetchBoardNameDirect(cfg, http)` y la columna `board_sync.name` en el mobile.
+
+**Por qué existe esta tarea.** La Task 4 le agregó `name` al `board_sync` del **server**, pero
+el plan omitió hacer lo mismo en el mobile. En backend mode los nombres llegan correctos
+dentro del snapshot; en direct mode la Task 7 sintetiza `Board {id}`, así que la solapa
+muestra `Board 9534` en vez de `Black Team Infra` justo cuando se usa fuera de la oficina.
+El pedido original era ver los squads por su nombre.
+
+- [ ] **Step 1: Escribir el test del transporte**
+
+Agregar a `mobile/__tests__/transports.test.ts`:
+
+```ts
+import { fetchBoardNameDirect } from '../lib/transports';
+
+describe('fetchBoardNameDirect', () => {
+  const cfg = { baseUrl: 'https://x.atlassian.net', email: 'e@t.com',
+                apiToken: 'tok', projectKey: 'DPP', boardId: 9534 };
+
+  it('devuelve el nombre del board', async () => {
+    const http = jest.fn(async () => ({ name: 'Black Team Infra' })) as any;
+    expect(await fetchBoardNameDirect(cfg, http)).toBe('Black Team Infra');
+    expect(http.mock.calls[0][0].url).toContain('/rest/agile/1.0/board/9534');
+  });
+
+  it('devuelve null si Jira falla, sin propagar el error', async () => {
+    const http = jest.fn(async () => { throw new Error('boom'); }) as any;
+    await expect(fetchBoardNameDirect(cfg, http)).resolves.toBeNull();
+  });
+
+  it('devuelve null si name no es un string', async () => {
+    const http = jest.fn(async () => ({ name: { value: 'raro' } })) as any;
+    expect(await fetchBoardNameDirect(cfg, http)).toBeNull();
+  });
+});
+```
+
+- [ ] **Step 2: Correr el test para verificar que falla**
+
+Run: `cd mobile && npx jest __tests__/transports.test.ts`
+Expected: FAIL — `fetchBoardNameDirect is not a function`.
+
+- [ ] **Step 3: Implementar el transporte**
+
+En `mobile/lib/transports.ts`:
+
+```ts
+// Espeja a JiraClient.fetchBoardName del server. El nombre es cosmetico: si Jira
+// falla o devuelve un payload raro se degrada a null y el sync sigue.
+export async function fetchBoardNameDirect(cfg: JiraConfig, http: JiraHttp = jiraHttpFetch): Promise<string | null> {
+  try {
+    const data = await http({
+      url: `${cfg.baseUrl}/rest/agile/1.0/board/${cfg.boardId}`,
+      auth: { username: cfg.email, password: cfg.apiToken }, params: {},
+    });
+    const name = (data as any)?.name;
+    return typeof name === 'string' ? name : null;
+  } catch { return null; }
+}
+```
+
+- [ ] **Step 4: Migración y persistencia**
+
+En `mobile/lib/db.ts`, agregar `name TEXT` al `CREATE TABLE IF NOT EXISTS board_sync` y una
+guarda de migración aditiva junto a las de `issues`:
+
+```ts
+  const boardCols = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(board_sync)`);
+  if (!boardCols.some(c => c.name === 'name')) {
+    await db.execAsync(`ALTER TABLE board_sync ADD COLUMN name TEXT`);
+  }
+```
+
+Extender `setBoardLastSync(db, boardId, iso)` con un parámetro opcional `name?: string | null`
+que preserve el nombre guardado cuando llega `null`, igual que hace el server:
+
+```ts
+  `INSERT INTO board_sync (board_id, last_synced_at, name) VALUES (?,?,?)
+   ON CONFLICT(board_id) DO UPDATE SET last_synced_at=excluded.last_synced_at,
+   name=COALESCE(excluded.name, board_sync.name)`
+```
+
+Y hacer que `listBoardSync(db)` devuelva también `name`.
+
+- [ ] **Step 5: Usarlo en directSync**
+
+En `mobile/lib/directSync.ts`, al cerrar el sync de cada board, traer el nombre y pasarlo a
+`setBoardLastSync`. Al armar los `boards` para `computeBundle`, usar `name ?? \`Board ${id}\``
+en vez de sintetizar siempre `Board {id}`.
+
+- [ ] **Step 6: Test del orquestador**
+
+Agregar a `mobile/__tests__/directSync.test.ts` un caso que verifique que el nombre traído
+de Jira termina en el `WorkloadResult` del bundle, y otro que verifique que si el fetch del
+nombre devuelve `null` el sync no se rompe y el squad cae en `Board {id}`.
+
+- [ ] **Step 7: Verificar**
+
+Run: `cd mobile && npx jest`
+Expected: toda la suite en verde. **No commitear con tests en rojo.**
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add mobile/lib/transports.ts mobile/lib/db.ts mobile/lib/directSync.ts \
+        mobile/__tests__/transports.test.ts mobile/__tests__/directSync.test.ts
+git commit -m "feat(mobile): nombre real del board en direct mode"
+```
+
+---
+
 ### Task 8: Mobile — hook y pantalla principal (layout B)
 
 **Files:**
@@ -1197,15 +1415,116 @@ En `mobile/app/(tabs)/_layout.tsx`, entre `equipo` e `issues`:
       <Tabs.Screen name="carga" options={{ title: 'Carga', tabBarIcon: tabIcon('pie-chart') }} />
 ```
 
-- [ ] **Step 5: Verificar que compila y que la suite sigue verde**
+- [ ] **Step 5: Extraer la lógica pura y testearla**
+
+> **RNTL no funciona en este proyecto.** `@testing-library/react-native@14` está declarada
+> pero es incompatible con el `jest-expo` 57 instalado: `render()` devuelve un objeto sin
+> ninguna query y `screen` tira "`render` function has not been called". Verificado con un
+> smoke test mínimo. **No intentes usar RNTL, no instales dependencias y no toques la
+> config de jest.** En su lugar, la lógica que puede romperse en silencio se extrae a
+> funciones puras y se testea con jest común.
+
+Crear `mobile/lib/workloadView.ts` con la lógica de presentación que hoy vive dentro de
+`SquadCard`:
+
+```ts
+import type { WorkloadRequester } from '@teammetrics/core/workload';
+
+export interface SplitRequesters {
+  top: WorkloadRequester[];
+  rest: WorkloadRequester[];
+  restPedidos: number;
+  restPendientes: number;
+  maxPedidos: number;
+}
+
+// Corta la lista en el top visible y el resto agrupado. La cola es larga (~29
+// solicitantes por squad), asi que el resto se colapsa detras de "Otros N equipos".
+export function splitRequesters(requesters: WorkloadRequester[], topN = 3): SplitRequesters {
+  const top = requesters.slice(0, topN);
+  const rest = requesters.slice(topN);
+  return {
+    top, rest,
+    restPedidos: rest.reduce((s, r) => s + r.pedidos, 0),
+    restPendientes: rest.reduce((s, r) => s + r.pendientes, 0),
+    maxPedidos: requesters.reduce((m, r) => Math.max(m, r.pedidos), 0),
+  };
+}
+
+// Ancho de la barra proporcional al solicitante mas grande del squad.
+export function barPct(pedidos: number, maxPedidos: number): number {
+  return maxPedidos > 0 ? Math.round((pedidos / maxPedidos) * 100) : 0;
+}
+```
+
+Crear `mobile/__tests__/workloadView.test.ts`:
+
+```ts
+import { splitRequesters, barPct } from '../lib/workloadView';
+
+const r = (requester: string | null, pedidos: number, pendientes = 0) => ({ requester, pedidos, pendientes });
+
+describe('splitRequesters', () => {
+  const cinco = [r('Groot', 103, 5), r('Camel Case', 103, 1), r(null, 82, 31),
+                 r('Devengers', 39, 0), r('La Teconeta', 30, 2)];
+
+  it('corta en el top 3 y agrupa el resto con sus totales', () => {
+    const s = splitRequesters(cinco);
+    expect(s.top.map(x => x.requester)).toEqual(['Groot', 'Camel Case', null]);
+    expect(s.rest).toHaveLength(2);
+    expect(s.restPedidos).toBe(69);      // 39 + 30
+    expect(s.restPendientes).toBe(2);    // 0 + 2
+  });
+
+  it('con 3 o menos no deja resto', () => {
+    const s = splitRequesters(cinco.slice(0, 3));
+    expect(s.rest).toEqual([]);
+    expect(s.restPedidos).toBe(0);
+    expect(s.restPendientes).toBe(0);
+  });
+
+  it('sin solicitantes no rompe', () => {
+    const s = splitRequesters([]);
+    expect(s.top).toEqual([]);
+    expect(s.maxPedidos).toBe(0);
+  });
+
+  it('maxPedidos sale de la lista completa, no solo del top', () => {
+    // Si saliera del top, la barra del resto podria pasarse del 100%.
+    expect(splitRequesters([r('a', 10), r('b', 9), r('c', 8), r('d', 50)]).maxPedidos).toBe(50);
+  });
+});
+
+describe('barPct', () => {
+  it('es proporcional al maximo', () => {
+    expect(barPct(50, 100)).toBe(50);
+    expect(barPct(100, 100)).toBe(100);
+  });
+
+  it('no divide por cero cuando el squad no tiene pedidos', () => {
+    expect(barPct(0, 0)).toBe(0);
+  });
+});
+```
+
+- [ ] **Step 6: Refactorizar `SquadCard` para consumir esas funciones**
+
+`SquadCard` deja de calcular el corte y el porcentaje inline y llama a `splitRequesters` y
+`barPct`. El render no cambia.
+
+Run: `cd mobile && npx jest __tests__/workloadView.test.ts`
+Expected: PASS, 6 tests.
+
+- [ ] **Step 7: Verificar tipos y suite completa**
 
 Run: `cd mobile && npx tsc --noEmit && npx jest`
-Expected: sin errores de tipos, tests en verde.
+Expected: sin errores de tipos, toda la suite en verde.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add mobile/hooks/useWorkload.ts mobile/components/SquadCard.tsx \
+        mobile/lib/workloadView.ts mobile/__tests__/workloadView.test.ts \
         "mobile/app/(tabs)/carga.tsx" "mobile/app/(tabs)/_layout.tsx"
 git commit -m "feat(mobile): solapa Carga con tarjeta por squad y cola larga colapsable"
 ```
@@ -1260,16 +1579,70 @@ export async function readWorkloadIssues(db: SQLite.SQLiteDatabase): Promise<Cor
 - Tira de resumen: `{abiertos} abiertos · {estancados} sin arrancar hace +{T}d · {p1} son P1 · más viejo {edad_max}d · mediana {edad_p50}d`. Omitir los tramos cuyo valor sea 0.
 - `FlatList` de `WorkloadIssueRow`, ya ordenada por antigüedad desde el core.
 
-- [ ] **Step 5: Verificar**
+- [ ] **Step 5: Extraer el umbral de color y testearlo**
+
+> Mismo criterio que la Task 8: RNTL no funciona en este proyecto, así que la lógica que
+> puede romperse en silencio se extrae y se testea pura. No instales nada ni toques jest.
+
+Agregar a `mobile/lib/workloadView.ts`:
+
+```ts
+import { Colors } from './theme';
+
+// Color de la antiguedad por umbral, multiplos de AGING_THRESHOLD_DAYS (T, default 7):
+// gris hasta 2T, naranja entre 2T y 8T, rojo por encima de 8T.
+export function ageColor(edadDias: number, thresholdDays = 7): string {
+  if (edadDias > thresholdDays * 8) return Colors.error;
+  if (edadDias > thresholdDays * 2) return Colors.warning;
+  return Colors.textMuted;
+}
+```
+
+Agregar a `mobile/__tests__/workloadView.test.ts`:
+
+```ts
+import { ageColor } from '../lib/workloadView';
+import { Colors } from '../lib/theme';
+
+describe('ageColor', () => {
+  it('gris hasta 2T, naranja entre 2T y 8T, rojo por encima', () => {
+    expect(ageColor(14)).toBe(Colors.textMuted);   // 2T exacto: todavia gris
+    expect(ageColor(15)).toBe(Colors.warning);
+    expect(ageColor(56)).toBe(Colors.warning);     // 8T exacto: todavia naranja
+    expect(ageColor(57)).toBe(Colors.error);
+  });
+
+  it('respeta un umbral distinto del default', () => {
+    expect(ageColor(19, 10)).toBe(Colors.textMuted);   // <= 2T (20): gris
+    expect(ageColor(21, 10)).toBe(Colors.warning);     // > 2T: naranja
+    expect(ageColor(81, 10)).toBe(Colors.error);       // > 8T (80): rojo
+  });
+
+  it('edad cero es gris', () => {
+    expect(ageColor(0)).toBe(Colors.textMuted);
+  });
+});
+```
+
+- [ ] **Step 6: Usar `ageColor` en `WorkloadIssueRow`**
+
+La fila consume `ageColor(issue.edad_dias)` en vez de calcular el umbral inline. El chip de
+talla se sigue omitiendo cuando `issue.talla` es `null`.
+
+Run: `cd mobile && npx jest __tests__/workloadView.test.ts`
+Expected: PASS.
+
+- [ ] **Step 7: Verificar tipos y suite completa**
 
 Run: `cd mobile && npx tsc --noEmit && npx jest`
-Expected: sin errores, tests en verde.
+Expected: sin errores, toda la suite en verde.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add "mobile/app/requester" mobile/hooks/useRequesterDetail.ts \
-        mobile/components/WorkloadIssueRow.tsx mobile/lib/db.ts
+        mobile/components/WorkloadIssueRow.tsx mobile/lib/workloadView.ts mobile/__tests__/workloadView.test.ts \
+        mobile/lib/db.ts
 git commit -m "feat(mobile): drill-down de solicitante con resumen y orden por antiguedad"
 ```
 

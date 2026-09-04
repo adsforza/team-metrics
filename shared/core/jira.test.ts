@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseJiraIssue, buildJql, fetchBoardIssues } from './jira';
+import { parseJiraIssue, buildJql, fetchBoardIssues, mergeIssuesByBoard } from './jira';
 import type { JiraHttp } from './jira';
 
 describe('parseJiraIssue', () => {
@@ -74,5 +74,60 @@ describe('fetchBoardIssues', () => {
     const res = await fetchBoardIssues(cfg, wrapped, '2026-01-01T00:00:00.000Z');
     expect(res).toEqual([]);
     expect(spy[0].params.jql).toContain('updated >=');
+  });
+});
+
+const rawIssue = (over: any = {}) => ({
+  key: 'DPP-1',
+  fields: {
+    summary: 'Titulo', description: null, status: { name: 'Backlog' }, assignee: null,
+    created: '2026-01-01T00:00:00.000-0300', updated: '2026-01-02T00:00:00.000-0300',
+    priority: { name: 'High (P1)' },
+    customfield_13510: [{ value: 'Tony Stack' }],
+    ...over,
+  },
+  changelog: { histories: [] },
+});
+
+describe('parseJiraIssue — requester/priority/boards', () => {
+  it('extrae requester del customfield_13510 y la prioridad', () => {
+    const r = parseJiraIssue(rawIssue());
+    expect(r.requester).toBe('Tony Stack');
+    expect(r.priority).toBe('High (P1)');
+  });
+
+  it('deja requester y priority en null cuando Jira no los trae', () => {
+    const r = parseJiraIssue(rawIssue({ customfield_13510: null, priority: null }));
+    expect(r.requester).toBeNull();
+    expect(r.priority).toBeNull();
+  });
+
+  it('acepta el customfield como objeto, no solo como array', () => {
+    const r = parseJiraIssue(rawIssue({ customfield_13510: { value: 'Groot' } }));
+    expect(r.requester).toBe('Groot');
+  });
+
+  it('devuelve boards vacio: la procedencia la agrega fetchBoardIssues', () => {
+    expect(parseJiraIssue(rawIssue()).boards).toEqual([]);
+  });
+});
+
+describe('mergeIssuesByBoard', () => {
+  const mk = (id: string, boards: number[]) => ({ ...parseJiraIssue(rawIssue()), id, boards } as any);
+
+  it('dedupea por id y hace la union de boards', () => {
+    const out = mergeIssuesByBoard([[mk('DPP-1', [9534])], [mk('DPP-1', [9536]), mk('DPP-2', [9536])]]);
+    expect(out).toHaveLength(2);
+    expect(out.find(i => i.id === 'DPP-1')!.boards.sort()).toEqual([9534, 9536]);
+    expect(out.find(i => i.id === 'DPP-2')!.boards).toEqual([9536]);
+  });
+
+  it('no duplica un board repetido', () => {
+    const out = mergeIssuesByBoard([[mk('DPP-1', [9534])], [mk('DPP-1', [9534])]]);
+    expect(out[0].boards).toEqual([9534]);
+  });
+
+  it('con un solo array devuelve lo mismo', () => {
+    expect(mergeIssuesByBoard([[mk('DPP-9', [9534])]])).toHaveLength(1);
   });
 });

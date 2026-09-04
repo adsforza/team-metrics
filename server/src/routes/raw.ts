@@ -8,9 +8,13 @@ router.get('/', (req, res, next) => {
     const db = getDb();
     const since = req.query.since as string | undefined;
 
+    // requester/boards/priority viajan en el crudo porque el drill-down de carga del
+    // mobile lee su tabla `issues` local (para funcionar offline): si no bajan por aca,
+    // en backend mode quedan NULL y el detalle sale vacio.
     const allIssues = db.prepare(
       `SELECT id, title, description, status, assignee_id, talla, talla_confidence,
-              created_at, updated_at, last_transition_at, talla_updated_at
+              created_at, updated_at, last_transition_at, talla_updated_at,
+              requester, boards, priority
        FROM issues`,
     ).all() as any[];
 
@@ -39,6 +43,13 @@ router.get('/', (req, res, next) => {
       `SELECT id, display_name, email, avatar_url FROM team_members`,
     ).all() as any[];
 
+    // Los nombres de board van completos siempre (son dos filas), sin filtrar por
+    // `since`: es la unica fuente de `board_sync.name` que tiene el mobile en backend
+    // mode, y sin ella el header del drill-down queda sin squad.
+    const boards = db.prepare(
+      `SELECT board_id, name FROM board_sync ORDER BY board_id`,
+    ).all() as any[];
+
     const lastSync = db.prepare(
       `SELECT finished_at FROM sync_log WHERE error IS NULL AND finished_at IS NOT NULL
        ORDER BY id DESC LIMIT 1`,
@@ -48,6 +59,7 @@ router.get('/', (req, res, next) => {
       issues,
       transitions,
       members,
+      boards,
       serverSyncedAt: lastSync?.finished_at ?? null,
     });
   } catch (err) {

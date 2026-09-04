@@ -1,4 +1,30 @@
+// Solo el nuevo test de round-trip de workload necesita esto: getDb()/readWorkload leen
+// vía expo-sqlite real, así que mockeamos el módulo con un fake con estado (no hay SQLite
+// real bajo jest — ver AGENTS.md/CLAUDE.md del mobile). Genérico para el patrón
+// INSERT OR REPLACE INTO <table> (id, result_json, synced_at) VALUES (1,?,?) / SELECT
+// result_json FROM <table> WHERE id = 1 que comparten todos los *_snapshot de fila única.
+jest.mock('expo-sqlite', () => {
+  const store = new Map<string, unknown[]>();
+  const mockDb = {
+    execAsync: jest.fn().mockResolvedValue(undefined),
+    runAsync: jest.fn((sql: string, params?: unknown[]) => {
+      const m = sql.match(/INSERT OR REPLACE INTO (\w+)/);
+      if (m) store.set(m[1], params ?? []);
+      return Promise.resolve(undefined);
+    }),
+    getFirstAsync: jest.fn((sql: string) => {
+      const m = sql.match(/FROM (\w+)/);
+      const params = m ? store.get(m[1]) : undefined;
+      return Promise.resolve(params ? { result_json: params[0] } : null);
+    }),
+    getAllAsync: jest.fn().mockResolvedValue([]),
+    withTransactionAsync: jest.fn((fn: () => Promise<void>) => fn()),
+  };
+  return { openDatabaseAsync: jest.fn().mockResolvedValue(mockDb) };
+});
+
 import { writeSnapshots } from '../lib/snapshots';
+import { getDb, readWorkload } from '../lib/db';
 
 function makeDbStub() {
   const calls: { sql: string; params?: unknown[] }[] = [];
@@ -74,5 +100,14 @@ describe('writeSnapshots', () => {
 
     expect(calls.some(c => c.sql.includes('DELETE FROM comparison_snapshot'))).toBe(false);
     expect(calls.some(c => c.sql.includes('INSERT OR REPLACE INTO comparison_snapshot'))).toBe(true);
+  });
+
+  it('escribe y relee el snapshot de workload', async () => {
+    const db = await getDb();
+    const wl = { squads: [{ board_id: 9534, name: 'Black', pedidos: 3, pendientes: 1,
+      requesters: [{ requester: 'Groot', pedidos: 3, pendientes: 1 }] }],
+      totals: { pedidos: 3, pendientes: 1, compartidos: 0 } };
+    await writeSnapshots(db, { workload: wl } as any, '2026-09-03T00:00:00.000Z');
+    expect(await readWorkload(db)).toEqual(wl);
   });
 });

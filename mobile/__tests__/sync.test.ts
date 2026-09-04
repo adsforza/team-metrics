@@ -34,6 +34,7 @@ function mockAllFetch(overrides: Record<string, unknown> = {}) {
     if (url.includes('/api/metrics'))            return Promise.resolve({ ok: true, json: () => Promise.resolve(overrides['/api/metrics'] ?? mockKpi) });
     if (url.includes('/api/team'))               return Promise.resolve({ ok: true, json: () => Promise.resolve({ team: { delivery: { value: 1, previous: 1, trend: 'flat', improving: 'steady' }, predictability: { value: 1, previous: 1, trend: 'flat', improving: 'steady' }, focus: { value: 1, previous: 1, trend: 'flat', improving: 'steady' }, flow: { value: 1, previous: 1, trend: 'flat', improving: 'steady' } }, members: [], context: { delivery: { min:0,median:1,max:2 }, predictability: { min:0,median:1,max:2 }, focus: { min:0,median:1,max:2 }, flow: { min:0,median:1,max:2 } } }) });
     if (url.includes('/api/issues'))             return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+    if (url.includes('/api/workload'))           return Promise.resolve({ ok: true, json: () => Promise.resolve({ squads: [], totals: { pedidos: 0, pendientes: 0, compartidos: 0 } }) });
     if (url.includes('/api/raw'))  return Promise.resolve({ ok: true, json: () => Promise.resolve({ issues: [], transitions: [], members: [], serverSyncedAt: '2026-06-21T00:05:00Z' }) });
     return Promise.reject(new Error('unmatched URL: ' + url));
   });
@@ -85,7 +86,7 @@ describe('performSync', () => {
     // seteó el sentinela board_sync con board_id 0 y el serverSyncedAt
     expect(db.runAsync).toHaveBeenCalledWith(
       expect.stringContaining('INTO board_sync'),
-      [0, '2026-06-21T00:05:00Z'],
+      [0, '2026-06-21T00:05:00Z', null],
     );
   });
 

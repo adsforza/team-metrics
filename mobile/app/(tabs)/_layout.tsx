@@ -29,6 +29,7 @@ export default function TabLayout() {
     >
       <Tabs.Screen name="index"    options={{ title: 'Inicio' ,   tabBarIcon: tabIcon('home') }} />
       <Tabs.Screen name="equipo"   options={{ title: 'Equipo',    tabBarIcon: tabIcon('users') }} />
+      <Tabs.Screen name="carga"    options={{ title: 'Carga',     tabBarIcon: tabIcon('pie-chart') }} />
       <Tabs.Screen name="issues"   options={{ title: 'Issues',    tabBarIcon: tabIcon('file-text') }} />
       <Tabs.Screen name="analisis" options={{ title: 'Análisis',  tabBarIcon: tabIcon('bar-chart-2') }} />
       <Tabs.Screen name="ajustes"  options={{ title: 'Ajustes',   tabBarIcon: tabIcon('settings') }} />

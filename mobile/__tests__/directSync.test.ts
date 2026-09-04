@@ -7,6 +7,7 @@ jest.mock('../lib/db', () => ({
   loadCoreIssues: jest.fn(),
   loadCoreTransitions: jest.fn(),
   loadCoreMembers: jest.fn(),
+  listBoardSync: jest.fn().mockResolvedValue([]),
 }));
 
 jest.mock('../lib/snapshots', () => ({
@@ -17,12 +18,12 @@ import { directSync, type DirectSyncConfig } from '../lib/directSync';
 import {
   upsertRawIssues, getRawSince, setBoardLastSync,
   readUnclassifiedIssues, updateIssueTallas,
-  loadCoreIssues, loadCoreTransitions, loadCoreMembers,
+  loadCoreIssues, loadCoreTransitions, loadCoreMembers, listBoardSync,
 } from '../lib/db';
 import { writeSnapshots } from '../lib/snapshots';
 import type { JiraHttp } from '@teammetrics/core/jira';
 import type { GenerateFn } from '@teammetrics/core/classify';
-import type { CoreIssueWithTitle, CoreTransition, CoreMember } from '@teammetrics/core/types';
+import type { CoreIssueWorkload, CoreTransition, CoreMember } from '@teammetrics/core/types';
 
 const NOW = new Date('2026-07-01T00:00:00Z');
 const dbStub = { __marker: 'db' } as any;
@@ -44,8 +45,9 @@ function jiraApiIssue(key: string, summary: string) {
   };
 }
 
-const coreIssues: CoreIssueWithTitle[] = [
-  { id: 'A', title: 'Issue A', status: 'To Do', assignee_id: null, talla: null, created_at: '2026-06-01T00:00:00Z', last_transition_at: null },
+const coreIssues: CoreIssueWorkload[] = [
+  { id: 'A', title: 'Issue A', status: 'To Do', assignee_id: null, talla: null, created_at: '2026-06-01T00:00:00Z', last_transition_at: null,
+    requester: null, priority: null, boards: [] },
 ];
 const coreTransitions: CoreTransition[] = [];
 const coreMembers: CoreMember[] = [];
@@ -69,7 +71,10 @@ beforeEach(() => {
 
 describe('directSync', () => {
   it('fetches per board using `since` from getRawSince, upserts raw, classifies pending, computes + writes a bundle, and reports success', async () => {
-    const http: JiraHttp = jest.fn().mockResolvedValue({ issues: [jiraApiIssue('A', 'Issue A')], total: 1 });
+    const http: JiraHttp = jest.fn(async (req: any) => {
+      if (req.url.endsWith('/board/7')) return { id: 7, name: 'Black Team Infra' };
+      return { issues: [jiraApiIssue('A', 'Issue A')], total: 1 };
+    }) as any;
     const fakeGenerate: GenerateFn = jest.fn().mockResolvedValue('[{"talla":"M","confidence":0.9}]');
     const makeGen = jest.fn().mockReturnValue(fakeGenerate);
 
@@ -81,17 +86,17 @@ describe('directSync', () => {
 
     // fetched with `since` from getRawSince
     expect(getRawSince).toHaveBeenCalledWith(dbStub, 7);
-    expect(http).toHaveBeenCalledTimes(1);
+    expect(http).toHaveBeenCalledTimes(2);
     const [req] = (http as jest.Mock).mock.calls[0];
     expect(req.url).toContain('/board/7/issue');
     expect(req.params.jql).toContain('updated >= "2026-06-01 00:00"');
 
-    // upserted raw + advanced the board watermark
+    // upserted raw + advanced the board watermark, carrying the board name fetched from Jira
     expect(upsertRawIssues).toHaveBeenCalledWith(
       dbStub,
       expect.arrayContaining([expect.objectContaining({ id: 'A', title: 'Issue A' })]),
     );
-    expect(setBoardLastSync).toHaveBeenCalledWith(dbStub, 7, NOW.toISOString());
+    expect(setBoardLastSync).toHaveBeenCalledWith(dbStub, 7, NOW.toISOString(), 'Black Team Infra');
 
     // classified the pending issue
     expect(readUnclassifiedIssues).toHaveBeenCalledWith(dbStub);
@@ -197,5 +202,32 @@ describe('directSync', () => {
     const config: DirectSyncConfig = { boards: [boardCfg], geminiKey: 'gk', filters: {} };
     await directSync(dbStub, config, { http, now: NOW, onProgress });
     expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({ label: expect.stringContaining('board') }));
+  });
+
+  it('el nombre de board traído de Jira via listBoardSync termina en el WorkloadResult del bundle', async () => {
+    (listBoardSync as jest.Mock).mockResolvedValue([{ id: 7, name: 'Black Team Infra' }]);
+    const http: JiraHttp = jest.fn().mockResolvedValue({ issues: [], total: 0 });
+    const fakeGenerate: GenerateFn = jest.fn().mockResolvedValue('[{"talla":"M","confidence":0.9}]');
+    const makeGen = jest.fn().mockReturnValue(fakeGenerate);
+
+    await directSync(dbStub, baseConfig(), { http, makeGen, now: NOW });
+
+    const [, bundle] = (writeSnapshots as jest.Mock).mock.calls[0];
+    const squad = bundle.workload.squads.find((s: any) => s.board_id === 7);
+    expect(squad).toEqual(expect.objectContaining({ board_id: 7, name: 'Black Team Infra' }));
+  });
+
+  it('si listBoardSync devuelve name null el squad cae en "Board {id}" sin romper el sync', async () => {
+    (listBoardSync as jest.Mock).mockResolvedValue([{ id: 7, name: null }]);
+    const http: JiraHttp = jest.fn().mockResolvedValue({ issues: [], total: 0 });
+    const fakeGenerate: GenerateFn = jest.fn().mockResolvedValue('[{"talla":"M","confidence":0.9}]');
+    const makeGen = jest.fn().mockReturnValue(fakeGenerate);
+
+    const result = await directSync(dbStub, baseConfig(), { http, makeGen, now: NOW });
+
+    expect(result.success).toBe(true);
+    const [, bundle] = (writeSnapshots as jest.Mock).mock.calls[0];
+    const squad = bundle.workload.squads.find((s: any) => s.board_id === 7);
+    expect(squad).toEqual(expect.objectContaining({ board_id: 7, name: 'Board 7' }));
   });
 });

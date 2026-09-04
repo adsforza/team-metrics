@@ -3,12 +3,25 @@ export interface JiraConfig { baseUrl: string; email: string; apiToken: string; 
 export interface JiraIssueRaw {
   id: string; title: string; description: string; status: string;
   assignee: { id: string; display_name: string; email: string; avatar_url: string | null } | null;
+  requester: string | null;
+  priority: string | null;
+  boards: number[];
   created_at: string; updated_at: string;
   transitions: Array<{ from_status: string; to_status: string; transitioned_at: string }>;
 }
 
 export interface JiraHttpRequest { url: string; auth: { username: string; password: string }; params: Record<string, any>; }
 export type JiraHttp = (req: JiraHttpRequest) => Promise<{ issues?: any[]; total?: number } & Record<string, any>>;
+
+const REQUESTER_FIELD = 'customfield_13510';
+
+// Los custom fields de tipo select llegan como objeto {value} o como array de objetos.
+function optionValue(v: any): string | null {
+  if (v == null) return null;
+  const first = Array.isArray(v) ? v[0] : v;
+  const s = first?.value ?? first?.name ?? null;
+  return typeof s === 'string' && s.trim() ? s.trim() : null;
+}
 
 export function parseJiraIssue(raw: any): JiraIssueRaw {
   const desc = raw.fields.description;
@@ -35,6 +48,9 @@ export function parseJiraIssue(raw: any): JiraIssueRaw {
     description: descText,
     status: raw.fields.status.name,
     assignee,
+    requester: optionValue(raw.fields[REQUESTER_FIELD]),
+    priority: raw.fields.priority?.name ?? null,
+    boards: [],
     created_at: raw.fields.created,
     updated_at: raw.fields.updated,
     transitions,
@@ -59,13 +75,28 @@ export async function fetchBoardIssues(cfg: JiraConfig, http: JiraHttp, updatedS
   while (true) {
     const data = await http({
       url, auth,
-      params: { jql, startAt, maxResults, expand: 'changelog', fields: 'summary,description,status,assignee,created,updated' },
+      params: { jql, startAt, maxResults, expand: 'changelog',
+        fields: `summary,description,status,assignee,created,updated,priority,${REQUESTER_FIELD}` },
     });
     const issues: any[] = Array.isArray(data.issues) ? data.issues : [];
     const total: number = typeof data.total === 'number' ? data.total : 0;
-    for (const issue of issues) results.push(parseJiraIssue(issue));
+    for (const issue of issues) results.push({ ...parseJiraIssue(issue), boards: [cfg.boardId] });
     if (issues.length === 0 || startAt + issues.length >= total) break;
     startAt += maxResults;
   }
   return results;
+}
+
+// Reemplaza al .flat() de sync.ts: un issue presente en varios boards aparece una
+// sola vez, con la union de sus boards, en vez de que el segundo upsert pise al primero.
+export function mergeIssuesByBoard(issueArrays: JiraIssueRaw[][]): JiraIssueRaw[] {
+  const byId = new Map<string, JiraIssueRaw>();
+  for (const arr of issueArrays) {
+    for (const issue of arr) {
+      const prev = byId.get(issue.id);
+      if (!prev) { byId.set(issue.id, { ...issue, boards: [...issue.boards] }); continue; }
+      for (const b of issue.boards) if (!prev.boards.includes(b)) prev.boards.push(b);
+    }
+  }
+  return [...byId.values()];
 }

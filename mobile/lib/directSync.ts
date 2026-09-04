@@ -13,12 +13,13 @@ import { computeComparison } from '@teammetrics/core/comparison';
 import { computeWipRisk } from '@teammetrics/core/wipRisk';
 import { computeForecast } from '@teammetrics/core/forecast';
 import { computeBottleneck } from '@teammetrics/core/bottleneck';
+import { computeWorkload } from '@teammetrics/core/workload';
 import { fetchBoardIssues } from '@teammetrics/core/jira';
 import type { JiraConfig, JiraHttp } from '@teammetrics/core/jira';
 import { classifyTallaBatch } from '@teammetrics/core/classify';
 import type { GenerateFn } from '@teammetrics/core/classify';
 import type {
-  CoreIssueWithTitle, CoreTransition, CoreMember, CoreFilter,
+  CoreIssueWithTitle, CoreIssueWorkload, CoreTransition, CoreMember, CoreFilter,
 } from '@teammetrics/core/types';
 import type { SnapshotBundle } from './snapshots';
 import { writeSnapshots } from './snapshots';
@@ -28,9 +29,9 @@ import type { ProgressFn } from './progress';
 import {
   upsertRawIssues, getRawSince, setBoardLastSync,
   readUnclassifiedIssues, updateIssueTallas,
-  loadCoreIssues, loadCoreTransitions, loadCoreMembers,
+  loadCoreIssues, loadCoreTransitions, loadCoreMembers, listBoardSync,
 } from './db';
-import { jiraHttpFetch, makeGeminiGenerate } from './transports';
+import { jiraHttpFetch, makeGeminiGenerate, fetchBoardNameDirect } from './transports';
 
 const MS_DAY = 1000 * 60 * 60 * 24;
 
@@ -78,11 +79,12 @@ function mapIssues(issues: CoreIssueWithTitle[], transitions: CoreTransition[]):
 }
 
 export function computeBundle(
-  issues: CoreIssueWithTitle[],
+  issues: CoreIssueWorkload[],
   transitions: CoreTransition[],
   members: CoreMember[],
   filters: { from?: string; to?: string; assignee?: string | null },
   now: Date = new Date(),
+  boards: { id: number; name: string }[] = [],
 ): SnapshotBundle {
   const params: CoreFilter = { from: filters.from, to: filters.to, assignee: filters.assignee ?? undefined };
 
@@ -105,6 +107,7 @@ export function computeBundle(
     issues: mapIssues(issues, transitions),
     comparisonWeeks: weeks,
     comparisons,
+    workload: computeWorkload(issues, boards, params),
   };
 }
 
@@ -207,7 +210,9 @@ async function recomputeSnapshots(
   const issues = await loadCoreIssues(db);
   const transitions = await loadCoreTransitions(db);
   const members = await loadCoreMembers(db);
-  const bundle = computeBundle(issues, transitions, members, filters, now);
+  const boardRows = await listBoardSync(db);
+  const boards = boardRows.map(b => ({ id: b.id, name: b.name ?? `Board ${b.id}` }));
+  const bundle = computeBundle(issues, transitions, members, filters, now, boards);
   await writeSnapshots(db, bundle, syncedAt);
 }
 
@@ -233,7 +238,8 @@ export async function directSync(
       const since = await getRawSince(db, boardCfg.boardId);
       const raw = await fetchBoardIssues(boardCfg, http, since);
       await upsertRawIssues(db, raw);
-      await setBoardLastSync(db, boardCfg.boardId, syncedAt);
+      const boardName = await fetchBoardNameDirect(boardCfg, http);
+      await setBoardLastSync(db, boardCfg.boardId, syncedAt, boardName);
       okCount += 1;
     } catch (err) {
       failCount += 1;

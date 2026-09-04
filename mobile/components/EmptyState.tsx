@@ -3,13 +3,13 @@ import { Feather } from '@expo/vector-icons';
 import { Colors } from '../lib/theme';
 import { useSyncStore } from '../store/syncStore';
 
-export function EmptyState() {
+export function EmptyState({ subtitle = 'Sincronizá para ver las métricas' }: { subtitle?: string }) {
   const { sync, loading } = useSyncStore();
   return (
     <View style={s.container}>
       <Feather name="inbox" size={40} color={Colors.textSubtle} />
       <Text style={s.title}>Sin datos</Text>
-      <Text style={s.subtitle}>Sincronizá para ver las métricas</Text>
+      <Text style={s.subtitle}>{subtitle}</Text>
       <TouchableOpacity style={s.button} onPress={sync} disabled={loading}>
         <Feather name="refresh-cw" size={14} color="#fff" />
         <Text style={s.buttonText}>{loading ? 'Sincronizando…' : 'Sincronizar ahora'}</Text>

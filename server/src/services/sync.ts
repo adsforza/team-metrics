@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import Database from 'better-sqlite3';
 import { getDb } from '../db/index';
 import { createJiraClients } from './jira';
+import { mergeIssuesByBoard } from '../../../shared/core/jira';
 
 export interface SyncResult {
   synced_count: number;
@@ -21,11 +22,18 @@ export async function runSync(db: Database.Database): Promise<SyncResult> {
   try {
     const clients = createJiraClients();
     const syncedAt = new Date().toISOString();
-    const issueArrays = await Promise.all(clients.map(c => {
-      const row = db.prepare(`SELECT last_synced_at FROM board_sync WHERE board_id = ?`).get(c.boardId) as any;
-      return c.fetchIssues(row?.last_synced_at ?? undefined);
-    }));
-    const issues = issueArrays.flat();
+    const lastSyncs = clients.map(c => (db.prepare(
+      `SELECT last_synced_at FROM board_sync WHERE board_id = ?`
+    ).get(c.boardId) as any)?.last_synced_at as string | undefined);
+
+    // Si algun board es nuevo (sin marca previa), se resincroniza TODO completo.
+    // Con marcas divergentes un issue compartido vuelve desde un solo board y el
+    // ON CONFLICT le borra el otro. El full sync garantiza la precondicion que
+    // mergeIssuesByBoard necesita para armar la procedencia completa.
+    const hayBoardNuevo = lastSyncs.some(s => !s);
+    const issueArrays = await Promise.all(
+      clients.map((c, i) => c.fetchIssues(hayBoardNuevo ? undefined : lastSyncs[i])));
+    const issues = mergeIssuesByBoard(issueArrays);
 
     // Download only: persist issues + transitions. Classification is decoupled
     // (run separately via POST /api/sync/reclassify) so a sync always refreshes
@@ -54,16 +62,20 @@ export async function runSync(db: Database.Database): Promise<SyncResult> {
 
         // Upsert issue
         db.prepare(`
-          INSERT INTO issues (id, title, description, status, assignee_id, talla, talla_confidence, created_at, updated_at, synced_at, last_transition_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO issues (id, title, description, status, assignee_id, talla, talla_confidence,
+                              created_at, updated_at, synced_at, last_transition_at, requester, boards, priority)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(id) DO UPDATE SET
             title=excluded.title, description=excluded.description, status=excluded.status,
             assignee_id=excluded.assignee_id, talla=excluded.talla, talla_confidence=excluded.talla_confidence,
-            updated_at=excluded.updated_at, synced_at=excluded.synced_at, last_transition_at=excluded.last_transition_at
+            updated_at=excluded.updated_at, synced_at=excluded.synced_at,
+            last_transition_at=excluded.last_transition_at,
+            requester=excluded.requester, priority=excluded.priority, boards=excluded.boards
         `).run(
           issue.id, issue.title, issue.description, issue.status,
           issue.assignee?.id ?? null, talla, talla_confidence,
-          issue.created_at, issue.updated_at, now, lastTransition?.transitioned_at ?? null
+          issue.created_at, issue.updated_at, now, lastTransition?.transitioned_at ?? null,
+          issue.requester, issue.boards.slice().sort((a, b) => a - b).join(','), issue.priority
         );
 
         // Upsert transitions (insert only new ones by transitioned_at)
@@ -83,12 +95,25 @@ export async function runSync(db: Database.Database): Promise<SyncResult> {
 
     upsertBatch();
 
-    // Update per-board last sync timestamp
-    for (const c of clients) {
-      db.prepare(`INSERT INTO board_sync (board_id, last_synced_at) VALUES (?, ?)
-        ON CONFLICT(board_id) DO UPDATE SET last_synced_at=excluded.last_synced_at`)
-        .run(c.boardId, syncedAt);
-    }
+    // Marcas por board: primero TODA la red (un solo Promise.all, sin llamadas
+    // seriales), despues una unica transaccion. Escribirlas de a una con un await
+    // adentro del loop dejaba marcas divergentes si la red fallaba a mitad: el sync
+    // siguiente iba incremental con `updatedSince` distinto por board, un issue
+    // compartido actualizado en el medio volvia de un solo board y `boards=excluded.boards`
+    // le borraba el otro. Mismo agujero de procedencia que cerro 927487e, por otra puerta.
+    // Todo o nada: si fetchBoardName falla, no se escribe ninguna marca y el delta del
+    // proximo sync queda igual que antes (idempotente), en vez de quedar desalineado.
+    const boardNames = await Promise.all(clients.map(c => c.fetchBoardName()));
+    const markBoards = db.transaction(() => {
+      const stmt = db.prepare(
+        `INSERT INTO board_sync (board_id, last_synced_at, name) VALUES (?,?,?)
+         ON CONFLICT(board_id) DO UPDATE SET last_synced_at=excluded.last_synced_at,
+         name=COALESCE(excluded.name, board_sync.name)`);
+      for (let i = 0; i < clients.length; i++) {
+        stmt.run(clients[i].boardId, syncedAt, boardNames[i]);
+      }
+    });
+    markBoards();
 
     db.prepare(`UPDATE sync_log SET finished_at=?, synced_count=?, classified_count=? WHERE id=?`)
       .run(new Date().toISOString(), synced_count, classified_count, logId);
@@ -109,5 +134,24 @@ export function startSyncJob(): void {
   console.log(`Sync job scheduled: every ${intervalMinutes} minutes`);
   cron.schedule(cronExpr, () => {
     runSync(getDb()).catch(err => console.error('Sync failed:', err));
+  });
+}
+
+// Entry point de `npm run sync`. Sin esto el script solo definia funciones y salia
+// sin sincronizar nada, aunque el comando esta documentado como sync manual: por eso
+// un server caido dejaba la base atrasada sin forma de rescatarla a mano.
+// Corre fuera de index.ts, asi que tiene que cargar el .env e inicializar la DB por
+// su cuenta antes de que createJiraClients() lea las credenciales de process.env.
+if (require.main === module) {
+  (async () => {
+    const dotenv = await import('dotenv');
+    const path = await import('path');
+    dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+    const { initDb } = await import('../db/index');
+    const result = await runSync(initDb());
+    console.log(`Sync OK: ${result.synced_count} issues`);
+  })().catch(err => {
+    console.error('Sync failed:', err.message);
+    process.exit(1);
   });
 }
