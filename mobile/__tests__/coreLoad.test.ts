@@ -7,13 +7,31 @@ function stubDb(rowsBySql: (sql: string) => any[]) {
 }
 
 describe('core loaders', () => {
-  it('loadCoreIssues selects the CoreIssueWithTitle columns and returns typed rows', async () => {
-    const rows = [{ id: 'A', title: 'Issue A', status: 'In Progress', assignee_id: 'u1', talla: 'M', created_at: 'c', last_transition_at: 'l' }];
+  it('loadCoreIssues selects the CoreIssueWorkload columns and parses boards', async () => {
+    const rows = [{
+      id: 'A', title: 'Issue A', status: 'In Progress', assignee_id: 'u1', talla: 'M',
+      created_at: 'c', last_transition_at: 'l',
+      requester: 'Groot', priority: 'High (P1)', boards: '9534,9536',
+    }];
     const { db, calls } = stubDb(() => rows);
     const res = await loadCoreIssues(db);
-    expect(res).toEqual(rows);
+    expect(res[0].boards).toEqual([9534, 9536]);   // el CSV de la base se parsea a numeros
+    expect(res[0].requester).toBe('Groot');
+    expect(res[0].priority).toBe('High (P1)');
+    expect(res[0].talla).toBe('M');                // el resto de las columnas pasa igual
     expect(calls[0]).toContain('FROM issues');
     expect(calls[0]).toMatch(/id, title, status, assignee_id, talla, created_at, last_transition_at/);
+    expect(calls[0]).toMatch(/requester, priority, boards/);
+  });
+
+  it('loadCoreIssues devuelve boards vacio cuando la columna es NULL', async () => {
+    // Estado real de casi todas las filas hasta que corra el backfill.
+    const { db } = stubDb(() => [{
+      id: 'A', title: 't', status: 'Backlog', assignee_id: null, talla: null,
+      created_at: 'c', last_transition_at: null, requester: null, priority: null, boards: null,
+    }]);
+    const res = await loadCoreIssues(db);
+    expect(res[0].boards).toEqual([]);
   });
 
   it('loadCoreTransitions selects transition columns', async () => {
