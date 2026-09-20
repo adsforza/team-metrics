@@ -156,8 +156,32 @@ que se baja best-effort dentro de un `try/catch` (`sync.ts:118-125`).
 Si ese pedido falla, la cabecera diría "recién" mientras los números son viejos. El
 timestamp del último crudo exitoso ya se guarda en `board_sync` con `board_id = 0`.
 
-**Cambio:** el indicador pasa a leer ese timestamp. No es UI nueva — es apuntar un
+**Cambio 1:** el indicador pasa a leer ese timestamp. No es UI nueva — es apuntar un
 indicador existente a la fuente correcta, para que no mienta.
+
+**Cambio 2 — dejar de silenciar el fallo del crudo.** `ajustes.tsx:39-45` excluye
+deliberadamente `/api/raw` de la alerta de "Sync parcial":
+
+```ts
+// Los fallos best-effort de push de tallas (/api/tallas) o pull de crudo
+// (/api/raw) también caen en errors[], pero no deben disparar un falso
+// "Sync parcial" si los snapshots salieron bien
+```
+
+Esa decisión es **correcta hoy**: el crudo solo mantiene caliente el direct mode, así que
+si falla no se pierde nada visible. Después de este cambio deja de serlo, porque todos los
+números salen del crudo. La misma línea que hoy evita un falso alarmismo pasaría a ocultar
+un problema real.
+
+`/api/raw` sale de la lista de silenciados; `/api/tallas` se queda (sigue siendo
+best-effort de verdad: reintenta en el próximo sync sin pérdida). El mensaje debe decir
+qué implica, no solo qué endpoint falló — algo como *"No se pudieron bajar los datos
+nuevos: los números son de hace N días"*.
+
+**Verificación manual, útil desde ya:** `curl -s -o /dev/null -w "%{http_code} %{size_download}\n"
+http://localhost:3001/api/raw` — un `200` con megas de payload significa que el pull está
+sano. Medido el 2026-09-20: 4745 issues, 100% con `boards`, 90% con `requester`, 14.635
+transiciones, 40 miembros.
 
 ---
 
