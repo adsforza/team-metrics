@@ -93,18 +93,32 @@ export function matchesAssignees(assigneeId: string | null, assignees?: string[]
 En `shared/core/types.ts`, cambiar las dos interfaces (líneas 21 y 23):
 
 ```ts
-export interface CoreFilter { assignees?: string[]; talla?: string; status?: string; from?: string; to?: string; }
+// `assignee` singular sobrevive como alias deprecado hasta la Task 8: si se
+// eliminara aca, los seis modulos dejarian de compilar y las Tasks 1-3 quedarian
+// commiteadas sobre un arbol roto. Conviven; cada modulo migra en verde.
+export interface CoreFilter {
+  /** @deprecated usar `assignees`. Se elimina en la Task 8. */
+  assignee?: string;
+  assignees?: string[];
+  talla?: string; status?: string; from?: string; to?: string;
+}
 
-export interface FilterParams { assignees?: string[]; talla?: string; status?: string; from?: string; to?: string; }
+export interface FilterParams {
+  /** @deprecated usar `assignees`. Se elimina en la Task 8. */
+  assignee?: string;
+  assignees?: string[];
+  talla?: string; status?: string; from?: string; to?: string;
+}
 ```
 
 - [ ] **Step 4: Correr el test**
 
-Run: `cd shared/core && npx vitest run filters.test.ts`
-Expected: PASS, 5 tests.
+Run: `npm test --prefix shared/core`
+Expected: PASS — los 5 tests nuevos y los 113 preexistentes, todo verde.
 
-> La suite completa del core va a estar en rojo hasta la Task 3: los seis módulos siguen
-> leyendo `params.assignee`, que ya no existe en el tipo. Es esperado.
+> **La suite debe quedar VERDE.** Los seis módulos siguen leyendo `params.assignee`, que
+> sigue existiendo como alias. Si algo se pone en rojo acá, es un error real, no algo
+> esperado: no commitees hasta resolverlo.
 
 - [ ] **Step 5: Commit**
 
