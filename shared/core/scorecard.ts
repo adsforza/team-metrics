@@ -4,6 +4,7 @@
 // replaced by equivalents over plain arrays; every other helper is transcribed unchanged.
 import { percentile, median } from './stats';
 import { categorize, ACTIVE_STATUSES, DONE_STATUSES } from './statusCategories';
+import { matchesAssignees } from './filters';
 import type {
   Talla, CoreIssue, CoreTransition, CoreMember, FilterParams,
   DimensionValue, DimensionContext, ScorecardDimensions, PersonScorecard, TeamScorecardResponse,
@@ -49,19 +50,11 @@ function eachDay(w: Window): string[] {
 
 interface CompletedIssue { issue_id: string; talla: Talla | null; start_at: string; end_at: string }
 
-// Filters applied to the per-member / per-team queries. `assignee` (single) and `assignees`
-// (a set, for the restricted team aggregate) are mutually exclusive; an empty `assignees`
-// array means "no members" → matches nothing.
-interface QueryFilter { assignee?: string; assignees?: string[]; tallas?: string[] }
-
-function passesAssignee(i: CoreIssue, f: QueryFilter): boolean {
-  if (f.assignee) return i.assignee_id === f.assignee;
-  if (f.assignees !== undefined) {
-    if (f.assignees.length === 0) return false;
-    return i.assignee_id != null && f.assignees.includes(i.assignee_id);
-  }
-  return true;
-}
+// Filters applied to the per-member / per-team queries. A single member's row uses
+// `assignees: [m.id]`; the restricted team aggregate uses the full set of included ids.
+// `undefined` = no filter (matches everything); an empty array means "no members" → matches
+// nothing. See matchesAssignees in ./filters for the shared convention.
+interface QueryFilter { assignees?: string[]; tallas?: string[] }
 
 function passesTalla(i: CoreIssue, f: QueryFilter): boolean {
   if (f.tallas && f.tallas.length) return i.talla != null && f.tallas.includes(i.talla);
@@ -85,7 +78,7 @@ function completedIssues(
   const toAt = w.to + 'T23:59:59Z';
   const out: CompletedIssue[] = [];
   for (const i of issues) {
-    if (!passesAssignee(i, f) || !passesTalla(i, f)) continue;
+    if (!matchesAssignees(i.assignee_id, f.assignees) || !passesTalla(i, f)) continue;
     const ts = byIssue.get(i.id) ?? [];
     const startTimes = ts.filter(t => ACTIVE_STATUSES.includes(t.to_status)).map(t => t.transitioned_at);
     if (startTimes.length === 0) continue; // mirrors the INNER JOIN on t_start
@@ -140,7 +133,7 @@ function activeWipAt(issues: CoreIssue[], transitions: CoreTransition[], day: st
   let count = 0;
   for (const i of issues) {
     if (i.created_at > at) continue;
-    if (!passesAssignee(i, f) || !passesTalla(i, f)) continue;
+    if (!matchesAssignees(i.assignee_id, f.assignees) || !passesTalla(i, f)) continue;
     const ts = (byIssue.get(i.id) ?? []).filter(t => t.transitioned_at <= at);
     let status = i.status;
     if (ts.length > 0) {
@@ -286,8 +279,14 @@ export function computeScorecard(
   const sortedMembers = [...members].sort((a, b) =>
     a.display_name < b.display_name ? -1 : a.display_name > b.display_name ? 1 : 0);
 
-  const memberCards: PersonScorecard[] = sortedMembers
-    .map(m => ({ member: m, ...dimensionsFor(issues, transitions, cur, prev, { assignee: m.id, tallas }) }))
+  // El filtro de personas restringe QUE filas se muestran; cada una sigue
+  // calculandose con sus propios issues.
+  const visibles = params.assignees && params.assignees.length
+    ? sortedMembers.filter(m => params.assignees!.includes(m.id))
+    : sortedMembers;
+
+  const memberCards: PersonScorecard[] = visibles
+    .map(m => ({ member: m, ...dimensionsFor(issues, transitions, cur, prev, { assignees: [m.id], tallas }) }))
     .filter(hasAllData);
 
   // Team aggregate restricted to the included members only (empty set → matches nothing).

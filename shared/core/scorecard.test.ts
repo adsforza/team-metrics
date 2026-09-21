@@ -216,4 +216,42 @@ describe('computeScorecard', () => {
     expect(sc.context.regressions).toEqual({ min: 0, median: 0, max: 0 });
     expect(sc.context.blocked).toEqual({ min: 0, median: 0, max: 0 });
   });
+
+  describe('params.assignees', () => {
+    // Three members, each with two completed M issues in the current window (delivery 4,
+    // distinct cycle times) → all three pass hasAllData and appear with no filter applied.
+    function twoCompletedIssues(prefix: string, assignee: string) {
+      return [
+        makeIssue(`${prefix}-1`, assignee, 'M', '2026-06-08T00:00:00Z',
+          [['In Progress', '2026-06-09T09:00:00Z'], ['Done', '2026-06-10T09:00:00Z']]),
+        makeIssue(`${prefix}-2`, assignee, 'M', '2026-06-08T00:00:00Z',
+          [['In Progress', '2026-06-09T09:00:00Z'], ['Done', '2026-06-11T09:00:00Z']]),
+      ];
+    }
+    const members = [makeMember('u1', 'Ana'), makeMember('u2', 'Beto'), makeMember('u3', 'Caro')];
+    const issuesAndTrans = [
+      ...twoCompletedIssues('A', 'u1'),
+      ...twoCompletedIssues('B', 'u2'),
+      ...twoCompletedIssues('C', 'u3'),
+    ];
+
+    it('con assignees, la tabla muestra solo esas personas', () => {
+      const r = run(issuesAndTrans, members, { ...params, assignees: ['u1', 'u2'] });
+      expect(r.members.map(m => m.member.id).sort()).toEqual(['u1', 'u2']);
+    });
+
+    it('la fila Equipo agrega solo a las personas elegidas', () => {
+      const todos = run(issuesAndTrans, members, params);
+      const dos = run(issuesAndTrans, members, { ...params, assignees: ['u1', 'u2'] });
+      // El agregado restringido no puede ser igual al del equipo completo si hay
+      // mas miembros con datos: si lo fuera, el filtro no se estaria aplicando.
+      expect(dos.members.length).toBeLessThan(todos.members.length);
+      expect(dos.team).not.toEqual(todos.team);
+    });
+
+    it('sin assignees se comporta como antes: todos los miembros', () => {
+      const r = run(issuesAndTrans, members, params);
+      expect(r.members.length).toBeGreaterThan(2);
+    });
+  });
 });
