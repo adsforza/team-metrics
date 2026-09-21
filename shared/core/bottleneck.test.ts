@@ -183,4 +183,19 @@ describe('computeBottleneck — filtro por assignees', () => {
     ];
     expect(computeBottleneck(issues, transitions, { now, assignees: ['nadie'] }).total_active).toBe(0);
   });
+
+  it('lista vacia no matchea nada (distinto de sin filtro)', () => {
+    const now = new Date('2026-06-27T12:00:00Z');
+    const issues: CoreIssueWithTitle[] = [
+      { id: 'A', title: 'A', status: 'In Progress', assignee_id: 'u1', talla: 'M' as Talla, created_at: '2026-01-01T00:00:00Z', last_transition_at: '2026-06-20T00:00:00Z' },
+    ];
+    const transitions: CoreTransition[] = [
+      { issue_id: 'A', from_status: 'To Do', to_status: 'In Progress', transitioned_at: '2026-06-20T00:00:00Z' },
+    ];
+    // Si la guarda fuera `opts.assignees ? ... : null` (truthy en vez de `!== undefined`),
+    // [] pasaria de largo la guarda y se comportaria como "sin filtro" (total_active: 1).
+    const r = computeBottleneck(issues, transitions, { now, assignees: [] });
+    expect(r.total_active).toBe(0);
+    expect(r.states).toEqual([]);
+  });
 });

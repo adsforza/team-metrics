@@ -208,4 +208,19 @@ describe('computeForecast — filtro por assignees', () => {
     ];
     expect(computeForecast(issues, transitions, { now, assignees: ['nadie'] }).totalThroughput).toBe(0);
   });
+
+  it('lista vacia no matchea nada (distinto de sin filtro)', () => {
+    const now = new Date('2026-06-30T00:00:00Z');
+    const issues: CoreIssue[] = [
+      { id: 'A', status: 'Done', assignee_id: 'u1', talla: 'M', created_at: '2026-01-01T00:00:00Z', last_transition_at: '2026-06-20T00:00:00Z' },
+    ];
+    const transitions: CoreTransition[] = [
+      { issue_id: 'A', from_status: 'In Progress', to_status: 'Done', transitioned_at: '2026-06-20T00:00:00Z' },
+    ];
+    // Si la guarda fuera `opts.assignees ? ... : null` (truthy en vez de `!== undefined`),
+    // [] pasaria de largo la guarda y se comportaria como "sin filtro" (totalThroughput: 1).
+    const r = computeForecast(issues, transitions, { now, assignees: [] });
+    expect(r.totalThroughput).toBe(0);
+    expect(r.insufficientData).toBe(true);
+  });
 });

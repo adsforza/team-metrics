@@ -86,12 +86,15 @@ export function computeBundle(
   now: Date = new Date(),
   boards: { id: number; name: string }[] = [],
 ): SnapshotBundle {
-  const params: CoreFilter = { from: filters.from, to: filters.to, assignee: filters.assignee ?? undefined };
+  // El core ya no lee `assignee`. Traducir aca, una vez: pasar el campo viejo
+  // compila (sigue siendo alias deprecado) pero no filtra nada.
+  const assignees = filters.assignee ? [filters.assignee] : undefined;
+  const params: CoreFilter = { from: filters.from, to: filters.to, assignees };
 
   const weeks = getLastNMondays(6, now);
   const comparisons = weeks.map(w => ({
     week: w,
-    result: computeComparison(issues, transitions, { week: w, now, assignee: filters.assignee }),
+    result: computeComparison(issues, transitions, { week: w, now, assignees }),
   }));
 
   return {
@@ -99,9 +102,9 @@ export function computeBundle(
     throughput: computeThroughputWeekly(issues, transitions, params, now),
     team: computeScorecard(issues, transitions, members, params, now),
     aging: computeAgingWIP(issues, params, now),
-    wipRisk: computeWipRisk(issues, transitions, { now, assignee: filters.assignee }),
-    bottleneck: computeBottleneck(issues, transitions, { now, assignee: filters.assignee }),
-    forecast: computeForecast(issues, transitions, { now, assignee: filters.assignee }),
+    wipRisk: computeWipRisk(issues, transitions, { now, assignees }),
+    bottleneck: computeBottleneck(issues, transitions, { now, assignees }),
+    forecast: computeForecast(issues, transitions, { now, assignees }),
     cfd: computeCFD(issues, transitions, params, now),
     byTalla: computeCycleTimeByTalla(issues, transitions, params),
     issues: mapIssues(issues, transitions),

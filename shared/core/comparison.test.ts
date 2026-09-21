@@ -125,8 +125,18 @@ describe('computeComparison', () => {
   });
 
   it('una persona sin issues da cero, no todos', () => {
+    // 'B' queda activo (WIP) y 'A' se completa esta semana: sin filtro, ambos conteos
+    // son > 0. Filtrar por alguien que no tiene issues debe llevar los dos a cero,
+    // no comportarse como "sin filtro" (que es exactamente lo que pasaria si Done
+    // ya diera 0 de por si en wip, sin que el filtro hiciera nada).
     seedTransition('A', 'In Progress', 'Done', '2026-06-24T10:00:00Z');
+    seedTransition('B', 'To Do', 'In Progress', '2026-06-23T10:00:00Z');
     issuesById.get('A')!.assignee_id = 'u1';
+    issuesById.get('B')!.assignee_id = 'u1';
+
+    const sinFiltro = computeComparison(issues(), transitions, { now: NOW });
+    expect(sinFiltro.throughput.current).toBe(1);
+    expect(sinFiltro.wip.current).toBe(1);
 
     const r = computeComparison(issues(), transitions, { now: NOW, assignees: ['nadie'] });
     expect(r.throughput.current).toBe(0);

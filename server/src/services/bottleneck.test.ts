@@ -8,10 +8,10 @@ const NOW = new Date('2026-06-27T12:00:00Z');
 let db: Database.Database;
 
 // Insert a non-done issue currently in `status`, which entered it at `enteredAt`
-function seedCurrent(id: string, status: string, enteredAt: string, talla: string | null = 'M') {
+function seedCurrent(id: string, status: string, enteredAt: string, talla: string | null = 'M', assigneeId: string = 'u1') {
   db.prepare(`INSERT INTO issues (id, title, description, status, assignee_id, talla, talla_confidence,
     created_at, updated_at, synced_at, last_transition_at, talla_updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
-    .run(id, `Issue ${id}`, '', status, 'u1', talla, 0.9,
+    .run(id, `Issue ${id}`, '', status, assigneeId, talla, 0.9,
         '2026-01-01T00:00:00Z', enteredAt, '2026-06-27T00:00:00Z', enteredAt, null);
   db.prepare(`INSERT INTO transitions (issue_id, from_status, to_status, transitioned_at) VALUES (?,?,?,?)`)
     .run(id, 'To Do', status, enteredAt);
@@ -141,5 +141,17 @@ describe('getBottleneck', () => {
     expect(ip.detail.pct_of_wip).toBeCloseTo(2 / 3, 5);
     const td = r.states.find(s => s.status === 'To Do')!;
     expect(td.detail.pct_of_wip).toBeCloseTo(1 / 3, 5);
+  });
+
+  it('opts.assignee restricts total_active to that member (wrapper forwards the filter to the core)', () => {
+    db.prepare(`INSERT INTO team_members VALUES ('u2','Other','o@t.com',null)`).run();
+    seedCurrent('a1', 'In Progress', '2026-06-20T00:00:00Z', 'M', 'u1');
+    seedCurrent('a2', 'In Progress', '2026-06-20T00:00:00Z', 'M', 'u2');
+
+    const all = getBottleneck(db, { now: NOW });
+    expect(all.total_active).toBe(2);
+
+    const u1 = getBottleneck(db, { now: NOW, assignee: 'u1' });
+    expect(u1.total_active).toBe(1);
   });
 });

@@ -19,10 +19,10 @@ function seedCompleted(db: Database.Database, id: string, talla: string, startAt
 }
 
 // An in-progress issue: enters In Progress at `startAt`, optional extra transitions, not Done.
-function seedActive(db: Database.Database, id: string, talla: string | null, status: string, startAt: string, extra: [string, string][] = []) {
+function seedActive(db: Database.Database, id: string, talla: string | null, status: string, startAt: string, extra: [string, string][] = [], assigneeId: string = 'u1') {
   db.prepare(`INSERT INTO issues (id, title, description, status, assignee_id, talla, talla_confidence,
     created_at, updated_at, synced_at, last_transition_at, talla_updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
-    id, `WIP ${id}`, '', status, 'u1', talla, 0.9, '2026-06-01T00:00:00Z', startAt, '2026-06-26T00:00:00Z', startAt, null,
+    id, `WIP ${id}`, '', status, assigneeId, talla, 0.9, '2026-06-01T00:00:00Z', startAt, '2026-06-26T00:00:00Z', startAt, null,
   );
   db.prepare(`INSERT INTO transitions (issue_id, from_status, to_status, transitioned_at) VALUES (?,?,?,?)`)
     .run(id, 'To Do', 'In Progress', startAt);
@@ -117,5 +117,19 @@ describe('getWipRisk', () => {
     const it = r.items.find(i => i.issue_id === 'WIP-tz')!;
     expect(Number.isNaN(it.age_days)).toBe(false);
     expect(it.age_days).toBeGreaterThan(0);
+  });
+
+  it('opts.assignee restricts items to that member (wrapper forwards the filter to the core)', () => {
+    db.prepare(`INSERT INTO team_members VALUES ('u2','Other','o@t.com',null)`).run();
+    seedFiveCompleted(db, 'L', 10, 'L'); // limit_L = 10 (baseline, assignee-agnostic)
+    seedActive(db, 'WIP-u1', 'L', 'In Progress', '2026-06-14T12:00:00Z', [], 'u1'); // 12 days → excedido
+    seedActive(db, 'WIP-u2', 'L', 'In Progress', '2026-06-14T12:00:00Z', [], 'u2'); // 12 days → excedido
+
+    const all = getWipRisk(db, { now: NOW });
+    expect(all.items.length).toBe(2);
+
+    const u1 = getWipRisk(db, { now: NOW, assignee: 'u1' });
+    expect(u1.items.length).toBe(1);
+    expect(u1.items[0].issue_id).toBe('WIP-u1');
   });
 });

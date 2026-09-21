@@ -73,6 +73,8 @@ describe('computeKpis', () => {
   });
 
   it('sin assignees no filtra nada', () => {
+    // No omitir `assignees` ni pasarlo `undefined` puede excluir a nadie: el resultado
+    // debe ser identico a filtrar explicitamente por la lista completa de personas presentes.
     const issues: CoreIssue[] = [
       issue('A', { status: 'In Progress', assignee_id: 'u1' }),
       issue('B', { status: 'In Progress', assignee_id: 'u2' }),
@@ -80,8 +82,9 @@ describe('computeKpis', () => {
     const transitions: CoreTransition[] = [];
     const NOW = new Date('2026-06-20T00:00:00Z');
     const sinFiltro = computeKpis(issues, transitions, {}, 7, NOW);
-    const conLista  = computeKpis(issues, transitions, { assignees: undefined }, 7, NOW);
-    expect(conLista).toEqual(sinFiltro);
+    const conTodos  = computeKpis(issues, transitions, { assignees: ['u1', 'u2'] }, 7, NOW);
+    expect(sinFiltro.wip).toBe(2);       // incluye a ambas personas, no solo a una
+    expect(sinFiltro).toEqual(conTodos);
   });
 
   it('una persona sin issues da cero, no todos', () => {
