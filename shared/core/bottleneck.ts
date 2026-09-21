@@ -6,6 +6,7 @@
 // sort) is transcribed unchanged, preserving exact status literals and string
 // timestamp comparisons (mirroring SQLite TEXT semantics).
 import { percentile } from './stats';
+import { matchesAssignees } from './filters';
 import { STATUS_CATEGORIES } from './statusCategories';
 import type {
   Talla,
@@ -138,13 +139,13 @@ function assignScores(combined: number[]): BottleneckScore[] {
 export function computeBottleneck(
   allIssues: CoreIssueWithTitle[],
   allTransitions: CoreTransition[],
-  opts: { now?: Date; assignee?: string | null } = {},
+  opts: { now?: Date; assignees?: string[] } = {},
 ): BottleneckResult {
   const now = opts.now ?? new Date();
   const nowMs = now.getTime();
-  // Filtro por persona (parity: sin assignee => sin filtro, comportamiento idéntico).
-  const ids = opts.assignee
-    ? new Set(allIssues.filter(i => i.assignee_id === opts.assignee).map(i => i.id))
+  // Filtro por persona (parity: sin assignees => sin filtro, comportamiento idéntico).
+  const ids = opts.assignees !== undefined
+    ? new Set(allIssues.filter(i => matchesAssignees(i.assignee_id, opts.assignees)).map(i => i.id))
     : null;
   const issues = ids ? allIssues.filter(i => ids.has(i.id)) : allIssues;
   const transitions = ids ? allTransitions.filter(t => ids.has(t.issue_id)) : allTransitions;

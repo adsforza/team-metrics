@@ -6,6 +6,7 @@
 // transcribed unchanged, preserving exact status literals and string timestamp math.
 import { percentile } from './stats';
 import { computeCycleTimes } from './metrics';
+import { matchesAssignees } from './filters';
 import { ACTIVE_STATUSES, STATUS_CATEGORIES } from './statusCategories';
 import type {
   Talla, TallaLimit, CoreIssueWithTitle, CoreTransition,
@@ -72,7 +73,7 @@ function activeIssues(issues: CoreIssueWithTitle[], transitions: CoreTransition[
 export function computeWipRisk(
   issues: CoreIssueWithTitle[],
   transitions: CoreTransition[],
-  opts: { now?: Date; assignee?: string | null } = {},
+  opts: { now?: Date; assignees?: string[] } = {},
 ): WipRiskResult {
   const now = opts.now ?? new Date();
   const nowMs = now.getTime();
@@ -86,7 +87,7 @@ export function computeWipRisk(
   let sin_limite = 0;
 
   for (const r of activeIssues(issues, transitions)) {
-    if (opts.assignee && r.assignee_id !== opts.assignee) continue;
+    if (!matchesAssignees(r.assignee_id, opts.assignees)) continue;
     const limit = r.talla ? limitByTalla.get(r.talla) ?? null : null;
     if (!r.talla || limit === null) { sin_limite++; continue; }
     const age_days = (nowMs - new Date(r.start_at).getTime()) / MS_PER_DAY;

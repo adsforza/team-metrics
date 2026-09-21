@@ -88,7 +88,7 @@ describe('computeComparison', () => {
     expect(r.throughput.current).toBe(1);
   });
 
-  it('opts.assignee restricts throughput and wip to that member', () => {
+  it('opts.assignees restricts throughput and wip to that member', () => {
     seedTransition('A', 'In Progress', 'Done', '2026-06-24T10:00:00Z'); // done this week
     seedTransition('B', 'To Do', 'In Progress', '2026-06-23T10:00:00Z'); // active this week
     seedTransition('C', 'In Progress', 'Done', '2026-06-24T10:00:00Z'); // done this week (other person)
@@ -102,8 +102,34 @@ describe('computeComparison', () => {
     expect(all.throughput.current).toBe(2); // A + C
     expect(all.wip.current).toBe(2);        // B + D
 
-    const u1 = computeComparison(issues(), transitions, { now: NOW, assignee: 'u1' });
+    const u1 = computeComparison(issues(), transitions, { now: NOW, assignees: ['u1'] });
     expect(u1.throughput.current).toBe(1);  // only A
     expect(u1.wip.current).toBe(1);         // only B
+  });
+
+  it('assignees con varias personas suma a todas', () => {
+    seedTransition('A', 'In Progress', 'Done', '2026-06-24T10:00:00Z');
+    seedTransition('B', 'To Do', 'In Progress', '2026-06-23T10:00:00Z');
+    seedTransition('C', 'In Progress', 'Done', '2026-06-24T10:00:00Z');
+    seedTransition('D', 'To Do', 'In Progress', '2026-06-23T10:00:00Z');
+    issuesById.get('A')!.assignee_id = 'u1';
+    issuesById.get('B')!.assignee_id = 'u1';
+    issuesById.get('C')!.assignee_id = 'u2';
+    issuesById.get('D')!.assignee_id = 'u2';
+
+    const soloU1 = computeComparison(issues(), transitions, { now: NOW, assignees: ['u1'] });
+    const soloU2 = computeComparison(issues(), transitions, { now: NOW, assignees: ['u2'] });
+    const ambos = computeComparison(issues(), transitions, { now: NOW, assignees: ['u1', 'u2'] });
+    expect(ambos.throughput.current).toBe(soloU1.throughput.current + soloU2.throughput.current);
+    expect(ambos.wip.current).toBe(soloU1.wip.current + soloU2.wip.current);
+  });
+
+  it('una persona sin issues da cero, no todos', () => {
+    seedTransition('A', 'In Progress', 'Done', '2026-06-24T10:00:00Z');
+    issuesById.get('A')!.assignee_id = 'u1';
+
+    const r = computeComparison(issues(), transitions, { now: NOW, assignees: ['nadie'] });
+    expect(r.throughput.current).toBe(0);
+    expect(r.wip.current).toBe(0);
   });
 });

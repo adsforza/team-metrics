@@ -73,11 +73,30 @@ describe('computeAgingWIP', () => {
       withTitle(issue('OPS-1', { status: 'In Progress', talla: 'S', assignee_id: 'u1', last_transition_at: '2026-05-25T00:00:00Z' }), 'A'),
       withTitle(issue('OPS-2', { status: 'Blocked', talla: 'M', assignee_id: 'u2', last_transition_at: '2026-05-25T00:00:00Z' }), 'B'),
     ];
-    const byAssignee = computeAgingWIP(issues, { assignee: 'u1' }, now);
+    const byAssignee = computeAgingWIP(issues, { assignees: ['u1'] }, now);
     expect(byAssignee.map(a => a.issue_id)).toEqual(['OPS-1']);
 
     const byTalla = computeAgingWIP(issues, { talla: 'M' }, now);
     expect(byTalla.map(a => a.issue_id)).toEqual(['OPS-2']);
+  });
+
+  it('assignees con varias personas suma a todas', () => {
+    const issues: CoreIssueWithTitle[] = [
+      withTitle(issue('OPS-1', { status: 'In Progress', talla: 'S', assignee_id: 'u1', last_transition_at: '2026-05-25T00:00:00Z' }), 'A'),
+      withTitle(issue('OPS-2', { status: 'Blocked', talla: 'M', assignee_id: 'u2', last_transition_at: '2026-05-25T00:00:00Z' }), 'B'),
+    ];
+    const soloU1 = computeAgingWIP(issues, { assignees: ['u1'] }, now);
+    const soloU2 = computeAgingWIP(issues, { assignees: ['u2'] }, now);
+    const ambos = computeAgingWIP(issues, { assignees: ['u1', 'u2'] }, now);
+    expect(ambos.length).toBe(soloU1.length + soloU2.length);
+  });
+
+  it('una persona sin issues da cero, no todos', () => {
+    const issues: CoreIssueWithTitle[] = [
+      withTitle(issue('OPS-1', { status: 'In Progress', talla: 'S', assignee_id: 'u1', last_transition_at: '2026-05-25T00:00:00Z' }), 'A'),
+    ];
+    const r = computeAgingWIP(issues, { assignees: ['nadie'] }, now);
+    expect(r.length).toBe(0);
   });
 });
 
@@ -113,8 +132,35 @@ describe('computeThroughputWeekly', () => {
       { issue_id: 'OPS-1', from_status: 'In Progress', to_status: 'Done', transitioned_at: '2026-05-06T10:00:00Z' },
       { issue_id: 'OPS-2', from_status: 'In Progress', to_status: 'Done', transitioned_at: '2026-05-06T10:00:00Z' },
     ];
-    const result = computeThroughputWeekly(issues, transitions, { from: '2026-05-01', to: '2026-05-31', assignee: 'u1' });
+    const result = computeThroughputWeekly(issues, transitions, { from: '2026-05-01', to: '2026-05-31', assignees: ['u1'] });
     expect(result).toEqual([{ week: '2026-05-04', count: 1, by_talla: { S: 0, M: 1, L: 0, XL: 0 } }]);
+  });
+
+  it('assignees con varias personas suma a todas', () => {
+    const issues: CoreIssue[] = [
+      issue('OPS-1', { talla: 'M', assignee_id: 'u1' }),
+      issue('OPS-2', { talla: 'L', assignee_id: 'u2' }),
+    ];
+    const transitions: CoreTransition[] = [
+      { issue_id: 'OPS-1', from_status: 'In Progress', to_status: 'Done', transitioned_at: '2026-05-06T10:00:00Z' },
+      { issue_id: 'OPS-2', from_status: 'In Progress', to_status: 'Done', transitioned_at: '2026-05-06T10:00:00Z' },
+    ];
+    const params = { from: '2026-05-01', to: '2026-05-31' };
+    const soloU1 = computeThroughputWeekly(issues, transitions, { ...params, assignees: ['u1'] });
+    const soloU2 = computeThroughputWeekly(issues, transitions, { ...params, assignees: ['u2'] });
+    const ambos = computeThroughputWeekly(issues, transitions, { ...params, assignees: ['u1', 'u2'] });
+    expect(ambos[0].count).toBe(soloU1[0].count + soloU2[0].count);
+  });
+
+  it('una persona sin issues da cero, no todos', () => {
+    const issues: CoreIssue[] = [
+      issue('OPS-1', { talla: 'M', assignee_id: 'u1' }),
+    ];
+    const transitions: CoreTransition[] = [
+      { issue_id: 'OPS-1', from_status: 'In Progress', to_status: 'Done', transitioned_at: '2026-05-06T10:00:00Z' },
+    ];
+    const result = computeThroughputWeekly(issues, transitions, { from: '2026-05-01', to: '2026-05-31', assignees: ['nadie'] });
+    expect(result).toEqual([]);
   });
 
   it('defaults window to the last 56 days ending at `now`', () => {
@@ -164,9 +210,29 @@ describe('computeCFD', () => {
       issue('OPS-1', { status: 'To Do', assignee_id: 'u1', created_at: '2026-05-01T00:00:00Z' }),
       issue('OPS-2', { status: 'To Do', assignee_id: 'u2', created_at: '2026-05-03T00:00:00Z' }),
     ];
-    const points = computeCFD(issues, [], { from: '2026-05-01', to: '2026-05-03', assignee: 'u1' });
+    const points = computeCFD(issues, [], { from: '2026-05-01', to: '2026-05-03', assignees: ['u1'] });
     expect(points[0].todo).toBe(1); // only OPS-1 exists and matches assignee
     expect(points[2].todo).toBe(1); // OPS-2 excluded by assignee filter even though created by day 3
+  });
+
+  it('assignees con varias personas suma a todas', () => {
+    const issues: CoreIssue[] = [
+      issue('OPS-1', { status: 'To Do', assignee_id: 'u1', created_at: '2026-05-01T00:00:00Z' }),
+      issue('OPS-2', { status: 'To Do', assignee_id: 'u2', created_at: '2026-05-01T00:00:00Z' }),
+    ];
+    const params = { from: '2026-05-01', to: '2026-05-03' };
+    const soloU1 = computeCFD(issues, [], { ...params, assignees: ['u1'] });
+    const soloU2 = computeCFD(issues, [], { ...params, assignees: ['u2'] });
+    const ambos = computeCFD(issues, [], { ...params, assignees: ['u1', 'u2'] });
+    expect(ambos[0].todo).toBe(soloU1[0].todo + soloU2[0].todo);
+  });
+
+  it('una persona sin issues da cero, no todos', () => {
+    const issues: CoreIssue[] = [
+      issue('OPS-1', { status: 'To Do', assignee_id: 'u1', created_at: '2026-05-01T00:00:00Z' }),
+    ];
+    const points = computeCFD(issues, [], { from: '2026-05-01', to: '2026-05-03', assignees: ['nadie'] });
+    expect(points[0].todo).toBe(0);
   });
 
   it('defaults window to the last 30 days ending at `now`', () => {

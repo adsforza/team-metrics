@@ -117,7 +117,7 @@ describe('computeWipRisk', () => {
   });
 });
 
-describe('computeWipRisk — filtro por assignee', () => {
+describe('computeWipRisk — filtro por assignees', () => {
   const NOW2 = new Date('2026-06-26T12:00:00Z');
   function scenario(): { issues: CoreIssueWithTitle[]; transitions: CoreTransition[] } {
     const issues: CoreIssueWithTitle[] = [];
@@ -141,11 +141,25 @@ describe('computeWipRisk — filtro por assignee', () => {
   it('límites globales, items sólo de la persona filtrada', () => {
     const { issues, transitions } = scenario();
     const all = computeWipRisk(issues, transitions, { now: NOW2 });
-    const u1 = computeWipRisk(issues, transitions, { now: NOW2, assignee: 'u1' });
+    const u1 = computeWipRisk(issues, transitions, { now: NOW2, assignees: ['u1'] });
     expect(all.items.length).toBe(2);
     expect(u1.items.length).toBe(1);
     expect(u1.items.every(i => i.assignee_id === 'u1')).toBe(true);
     // el límite L existe aunque la persona no tenga completadas propias (baseline global)
     expect(u1.limits.find(l => l.talla === 'L')!.limit_days).toBeCloseTo(10, 5);
+  });
+
+  it('assignees con varias personas suma a todas', () => {
+    const { issues, transitions } = scenario();
+    const soloU1 = computeWipRisk(issues, transitions, { now: NOW2, assignees: ['u1'] });
+    const soloU2 = computeWipRisk(issues, transitions, { now: NOW2, assignees: ['u2'] });
+    const ambos = computeWipRisk(issues, transitions, { now: NOW2, assignees: ['u1', 'u2'] });
+    expect(ambos.items.length).toBe(soloU1.items.length + soloU2.items.length);
+  });
+
+  it('una persona sin issues da cero, no todos', () => {
+    const { issues, transitions } = scenario();
+    const r = computeWipRisk(issues, transitions, { now: NOW2, assignees: ['nadie'] });
+    expect(r.items.length).toBe(0);
   });
 });

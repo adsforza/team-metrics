@@ -1,4 +1,5 @@
 import { percentile } from './stats';
+import { matchesAssignees } from './filters';
 import type { CoreIssue, CoreTransition, CoreFilter, KPIMetrics } from './types';
 
 const DONE = ['Done', 'Finalizada'];
@@ -22,7 +23,7 @@ export function computeCycleTimes(issues: CoreIssue[], transitions: CoreTransiti
 
   const cts: number[] = [];
   for (const i of issues) {
-    if (params.assignee && i.assignee_id !== params.assignee) continue;
+    if (!matchesAssignees(i.assignee_id, params.assignees)) continue;
     if (tallas && (!i.talla || !tallas.includes(i.talla))) continue;
     if (statuses && !statuses.includes(i.status)) continue;
     const ts = tByIssue.get(i.id) ?? [];
@@ -44,14 +45,14 @@ export function computeKpis(
 ): KPIMetrics {
   const from = (params.from ?? '2000-01-01') + 'T00:00:00Z';
   const to = (params.to ?? '2099-12-31') + 'T23:59:59Z';
-  const byAssignee = (i: CoreIssue) => !params.assignee || i.assignee_id === params.assignee;
+  const byAssignee = (i: CoreIssue) => matchesAssignees(i.assignee_id, params.assignees);
 
   const wip = issues.filter(i => byAssignee(i) && !WIP_EXCLUDED.includes(i.status)).length;
 
   const assigneeById = new Map(issues.map(i => [i.id, i.assignee_id]));
   const throughput = transitions.filter(t =>
     DONE.includes(t.to_status) && t.transitioned_at >= from && t.transitioned_at <= to &&
-    (!params.assignee || assigneeById.get(t.issue_id) === params.assignee)
+    matchesAssignees(assigneeById.get(t.issue_id) ?? null, params.assignees)
   ).length;
 
   const cutoff = new Date(now.getTime() - Math.max(1, agingThresholdDays) * MS_DAY).toISOString();

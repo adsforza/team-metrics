@@ -1,4 +1,5 @@
 import { STATUS_CATEGORIES } from './statusCategories';
+import { matchesAssignees } from './filters';
 import type { CoreIssue, CoreTransition, ComparisonResult, ComparisonPeriod } from './types';
 
 const DONE_STATUSES = [...STATUS_CATEGORIES.done] as string[];
@@ -40,7 +41,7 @@ function getThroughput(
   assigneeById: Map<string, string | null>,
   weekStart: string,
   weekEnd: string,
-  assignee?: string | null
+  assignees?: string[]
 ): number {
   const start = weekStart + 'T00:00:00Z';
   const end = weekEnd + 'T00:00:00Z';
@@ -48,7 +49,7 @@ function getThroughput(
   for (const t of transitions) {
     if (!DONE_STATUSES.includes(t.to_status)) continue;
     if (!(t.transitioned_at >= start && t.transitioned_at < end)) continue;
-    if (assignee && assigneeById.get(t.issue_id) !== assignee) continue;
+    if (!matchesAssignees(assigneeById.get(t.issue_id) ?? null, assignees)) continue;
     issueIds.add(t.issue_id);
   }
   return issueIds.size;
@@ -62,7 +63,7 @@ function getWipSnapshot(
   transitions: CoreTransition[],
   assigneeById: Map<string, string | null>,
   weekEnd: string,
-  assignee?: string | null
+  assignees?: string[]
 ): number {
   const end = weekEnd + 'T00:00:00Z';
   const lastBefore = new Map<string, CoreTransition>();
@@ -76,7 +77,7 @@ function getWipSnapshot(
   let count = 0;
   for (const [issueId, t] of lastBefore) {
     if (WIP_EXCLUDED.includes(t.to_status)) continue;
-    if (assignee && assigneeById.get(issueId) !== assignee) continue;
+    if (!matchesAssignees(assigneeById.get(issueId) ?? null, assignees)) continue;
     count++;
   }
   return count;
@@ -85,13 +86,13 @@ function getWipSnapshot(
 export function computeComparison(
   issues: CoreIssue[],
   transitions: CoreTransition[],
-  opts: { week?: string; now?: Date; assignee?: string | null } = {}
+  opts: { week?: string; now?: Date; assignees?: string[] } = {}
 ): ComparisonResult {
   const now = opts.now ?? new Date();
   const week = opts.week ?? isoMonday(now);
   const prevWeek = addDays(week, -7);
   const nextWeek = addDays(week, 7);
-  const assignee = opts.assignee ?? null;
+  const assignees = opts.assignees;
 
   const assigneeById = new Map(issues.map(i => [i.id, i.assignee_id]));
 
@@ -99,12 +100,12 @@ export function computeComparison(
     week,
     prevWeek,
     throughput: period(
-      getThroughput(transitions, assigneeById, week, nextWeek, assignee),
-      getThroughput(transitions, assigneeById, prevWeek, week, assignee)
+      getThroughput(transitions, assigneeById, week, nextWeek, assignees),
+      getThroughput(transitions, assigneeById, prevWeek, week, assignees)
     ),
     wip: period(
-      getWipSnapshot(transitions, assigneeById, nextWeek, assignee),
-      getWipSnapshot(transitions, assigneeById, week, assignee)
+      getWipSnapshot(transitions, assigneeById, nextWeek, assignees),
+      getWipSnapshot(transitions, assigneeById, week, assignees)
     ),
   };
 }

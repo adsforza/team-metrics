@@ -17,5 +17,8 @@ export function getComparison(
     SELECT issue_id, from_status, to_status, transitioned_at FROM transitions
   `).all() as CoreTransition[];
 
-  return computeComparison(issues, transitions, opts);
+  return computeComparison(issues, transitions, {
+    week: opts.week, now: opts.now,
+    assignees: opts.assignee ? [opts.assignee] : undefined,
+  });
 }

@@ -14,5 +14,8 @@ export function getWipRisk(db: Database.Database, opts: { now?: Date; assignee?:
     SELECT issue_id, from_status, to_status, transitioned_at FROM transitions
   `).all() as CoreTransition[];
 
-  return computeWipRisk(issues, transitions, opts);
+  return computeWipRisk(issues, transitions, {
+    now: opts.now,
+    assignees: opts.assignee ? [opts.assignee] : undefined,
+  });
 }

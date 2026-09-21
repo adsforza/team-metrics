@@ -58,4 +58,40 @@ describe('computeKpis', () => {
     const k = computeKpis(issues, [], {}, 7, new Date('2026-06-20T00:00:00Z'));
     expect(k.blocked_count).toBe(0);
   });
+
+  it('assignees con varias personas suma a todas', () => {
+    const issues: CoreIssue[] = [
+      issue('A', { status: 'In Progress', assignee_id: 'u1' }),
+      issue('B', { status: 'In Progress', assignee_id: 'u2' }),
+    ];
+    const transitions: CoreTransition[] = [];
+    const NOW = new Date('2026-06-20T00:00:00Z');
+    const soloU1 = computeKpis(issues, transitions, { assignees: ['u1'] }, 7, NOW);
+    const soloU2 = computeKpis(issues, transitions, { assignees: ['u2'] }, 7, NOW);
+    const ambos  = computeKpis(issues, transitions, { assignees: ['u1', 'u2'] }, 7, NOW);
+    expect(ambos.wip).toBe(soloU1.wip + soloU2.wip);
+  });
+
+  it('sin assignees no filtra nada', () => {
+    const issues: CoreIssue[] = [
+      issue('A', { status: 'In Progress', assignee_id: 'u1' }),
+      issue('B', { status: 'In Progress', assignee_id: 'u2' }),
+    ];
+    const transitions: CoreTransition[] = [];
+    const NOW = new Date('2026-06-20T00:00:00Z');
+    const sinFiltro = computeKpis(issues, transitions, {}, 7, NOW);
+    const conLista  = computeKpis(issues, transitions, { assignees: undefined }, 7, NOW);
+    expect(conLista).toEqual(sinFiltro);
+  });
+
+  it('una persona sin issues da cero, no todos', () => {
+    // El error clasico: tratar la lista vacia de resultados como "sin filtro".
+    const issues: CoreIssue[] = [
+      issue('A', { status: 'In Progress', assignee_id: 'u1' }),
+    ];
+    const transitions: CoreTransition[] = [];
+    const NOW = new Date('2026-06-20T00:00:00Z');
+    const r = computeKpis(issues, transitions, { assignees: ['nadie'] }, 7, NOW);
+    expect(r.wip).toBe(0);
+  });
 });

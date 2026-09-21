@@ -167,7 +167,7 @@ describe('computeForecast', () => {
   });
 });
 
-describe('computeForecast — filtro por assignee', () => {
+describe('computeForecast — filtro por assignees', () => {
   it('sólo cuenta el throughput de la persona filtrada', () => {
     const now = new Date('2026-06-30T00:00:00Z');
     const issues: CoreIssue[] = [
@@ -179,6 +179,33 @@ describe('computeForecast — filtro por assignee', () => {
       { issue_id: 'B', from_status: 'In Progress', to_status: 'Done', transitioned_at: '2026-06-20T00:00:00Z' },
     ];
     expect(computeForecast(issues, transitions, { now }).totalThroughput).toBe(2);
-    expect(computeForecast(issues, transitions, { now, assignee: 'u1' }).totalThroughput).toBe(1);
+    expect(computeForecast(issues, transitions, { now, assignees: ['u1'] }).totalThroughput).toBe(1);
+  });
+
+  it('assignees con varias personas suma a todas', () => {
+    const now = new Date('2026-06-30T00:00:00Z');
+    const issues: CoreIssue[] = [
+      { id: 'A', status: 'Done', assignee_id: 'u1', talla: 'M', created_at: '2026-01-01T00:00:00Z', last_transition_at: '2026-06-20T00:00:00Z' },
+      { id: 'B', status: 'Done', assignee_id: 'u2', talla: 'M', created_at: '2026-01-01T00:00:00Z', last_transition_at: '2026-06-20T00:00:00Z' },
+    ];
+    const transitions: CoreTransition[] = [
+      { issue_id: 'A', from_status: 'In Progress', to_status: 'Done', transitioned_at: '2026-06-20T00:00:00Z' },
+      { issue_id: 'B', from_status: 'In Progress', to_status: 'Done', transitioned_at: '2026-06-20T00:00:00Z' },
+    ];
+    const soloU1 = computeForecast(issues, transitions, { now, assignees: ['u1'] });
+    const soloU2 = computeForecast(issues, transitions, { now, assignees: ['u2'] });
+    const ambos = computeForecast(issues, transitions, { now, assignees: ['u1', 'u2'] });
+    expect(ambos.totalThroughput).toBe(soloU1.totalThroughput + soloU2.totalThroughput);
+  });
+
+  it('una persona sin issues da cero, no todos', () => {
+    const now = new Date('2026-06-30T00:00:00Z');
+    const issues: CoreIssue[] = [
+      { id: 'A', status: 'Done', assignee_id: 'u1', talla: 'M', created_at: '2026-01-01T00:00:00Z', last_transition_at: '2026-06-20T00:00:00Z' },
+    ];
+    const transitions: CoreTransition[] = [
+      { issue_id: 'A', from_status: 'In Progress', to_status: 'Done', transitioned_at: '2026-06-20T00:00:00Z' },
+    ];
+    expect(computeForecast(issues, transitions, { now, assignees: ['nadie'] }).totalThroughput).toBe(0);
   });
 });

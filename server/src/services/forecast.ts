@@ -44,6 +44,7 @@ export function getForecast(db: Database.Database, opts: ForecastOpts = {}): For
   `).all() as CoreTransition[];
 
   return computeForecast(issues, transitions, {
-    items: opts.items, horizon: opts.horizon, rng: opts.rng, now: opts.asOf, assignee: opts.assignee,
+    items: opts.items, horizon: opts.horizon, rng: opts.rng, now: opts.asOf,
+    assignees: opts.assignee ? [opts.assignee] : undefined,
   });
 }

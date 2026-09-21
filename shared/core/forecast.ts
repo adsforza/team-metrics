@@ -6,6 +6,7 @@
 // unchanged. `rng` stays injectable (default `Math.random`) — this module never calls
 // `Math.random()` directly.
 import { percentile } from './stats';
+import { matchesAssignees } from './filters';
 import { DONE_STATUSES, STATUS_CATEGORIES } from './statusCategories';
 import type {
   CoreIssue, CoreTransition, ForecastBin, ForecastWhen, ForecastHowMany, ForecastResult, ForecastConfidenceDate,
@@ -114,7 +115,7 @@ function dayConf(sorted: number[], p: number, now: Date): ForecastConfidenceDate
   return { days, date };
 }
 
-export interface ForecastOpts { items?: unknown; horizon?: unknown; rng?: () => number; now?: Date; assignee?: string | null }
+export interface ForecastOpts { items?: unknown; horizon?: unknown; rng?: () => number; now?: Date; assignees?: string[] }
 
 export function computeForecast(
   allIssues: CoreIssue[],
@@ -123,9 +124,9 @@ export function computeForecast(
 ): ForecastResult {
   const rng = opts.rng ?? Math.random;
   const now = opts.now ?? new Date();
-  // Filtro por persona (parity: sin assignee => sin filtro, comportamiento idéntico).
-  const ids = opts.assignee
-    ? new Set(allIssues.filter(i => i.assignee_id === opts.assignee).map(i => i.id))
+  // Filtro por persona (parity: sin assignees => sin filtro, comportamiento idéntico).
+  const ids = opts.assignees !== undefined
+    ? new Set(allIssues.filter(i => matchesAssignees(i.assignee_id, opts.assignees)).map(i => i.id))
     : null;
   const issues = ids ? allIssues.filter(i => ids.has(i.id)) : allIssues;
   const transitions = ids ? allTransitions.filter(t => ids.has(t.issue_id)) : allTransitions;

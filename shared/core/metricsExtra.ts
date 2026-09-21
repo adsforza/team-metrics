@@ -7,6 +7,7 @@
 // string/lexicographic timestamp comparisons (SQLite TEXT semantics).
 import { percentile } from './stats';
 import { computeCycleTimes } from './metrics';
+import { matchesAssignees } from './filters';
 import type {
   CoreIssue, CoreTransition, CoreFilter, CoreIssueWithTitle,
   Talla, TallaMetric, CFDPoint, ThroughputWeek, AgingIssue,
@@ -75,7 +76,7 @@ export function computeCFD(
 
     for (const issue of issues) {
       if (issue.created_at > dateStr) continue;
-      if (params.assignee && issue.assignee_id !== params.assignee) continue;
+      if (!matchesAssignees(issue.assignee_id, params.assignees)) continue;
 
       let lastStatus = issue.status;
       for (const t of transByIssue.get(issue.id) ?? []) {
@@ -123,7 +124,7 @@ export function computeThroughputWeekly(
 
     const issue = issueById.get(t.issue_id);
     if (!issue) continue;
-    if (params.assignee && issue.assignee_id !== params.assignee) continue;
+    if (!matchesAssignees(issue.assignee_id, params.assignees)) continue;
 
     const week = weekStart(t.transitioned_at);
     if (!weeks.has(week)) {
@@ -148,7 +149,7 @@ export function computeAgingWIP(
   const tallas = params.talla ? params.talla.split(',').map(t => t.trim()) : null;
 
   const filtered = issues.filter(i => {
-    if (params.assignee && i.assignee_id !== params.assignee) return false;
+    if (!matchesAssignees(i.assignee_id, params.assignees)) return false;
     if (tallas && (!i.talla || !tallas.includes(i.talla))) return false;
     if (AGING_EXCLUDED.includes(i.status)) return false;
     return true;
