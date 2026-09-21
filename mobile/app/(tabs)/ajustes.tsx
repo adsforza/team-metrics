@@ -6,7 +6,7 @@ import { Colors, Card, Typography } from '../../lib/theme';
 import { BASE_URL_KEY, DEFAULT_BASE_URL, setBaseUrl } from '../../lib/api';
 import { useSyncStore } from '../../store/syncStore';
 import { useFilterStore } from '../../store/filterStore';
-import { getDb, readTeamMemberNames, clearAllBoardSync } from '../../lib/db';
+import { getDb, clearAllBoardSync } from '../../lib/db';
 import { getDirectConfigFields, setDirectConfigFields, getDirectConfig, type DirectConfigFields } from '../../lib/directConfig';
 import { jiraHttpFetch } from '../../lib/transports';
 
@@ -17,19 +17,10 @@ export default function AjustesScreen() {
   const [dc, setDc] = useState<Partial<DirectConfigFields>>({});
   const [showSecrets, setShowSecrets] = useState(false);
   const { sync, reclassify, loading, lastSyncedAt, progress } = useSyncStore();
-  const { assignees, talla, setAssignees, setTalla } = useFilterStore();
-
-  // Selección única por ahora (el chip UI multi-persona es una tarea posterior):
-  // elegir "Todos" vacía la lista, elegir una persona la vuelve la única seleccionada.
-  const handleSetAssignee = (id: string | null) => {
-    setAssignees(id ? [id] : []);
-    sync();
-  };
-  const [members, setMembers] = useState<{ id: string; name: string }[]>([]);
+  const { talla, setTalla } = useFilterStore();
 
   useEffect(() => {
     AsyncStorage.getItem(BASE_URL_KEY).then(v => { if (v) setUrl(v); });
-    getDb().then(db => readTeamMemberNames(db)).then(setMembers).catch(console.error);
     getDirectConfigFields().then(setDc).catch(console.error);
   }, []);
 
@@ -45,8 +36,6 @@ export default function AjustesScreen() {
     if ((st.lastSyncStatus === 'partial' || st.lastSyncStatus === 'offline') && st.errors.length > 0) {
       Alert.alert('Sync parcial', `${st.errors.length} endpoint(s) fallaron:\n${st.errors.map(e => `${e.endpoint}: ${e.message}`).join('\n\n')}`);
     }
-    // Reload members after sync
-    getDb().then(db => readTeamMemberNames(db)).then(setMembers).catch(console.error);
   };
 
   // Prueba aislada de auth contra Jira usando las credenciales GUARDADAS (no las del
@@ -296,31 +285,7 @@ export default function AjustesScreen() {
       {/* Filtros globales */}
       <Text style={[Typography.label, s.sectionLabel]}>Filtros globales</Text>
       <View style={Card.base}>
-        <Text style={[Typography.label, { marginBottom: 10 }]}>Persona</Text>
-        <View style={s.chipRow}>
-          <TouchableOpacity
-            style={[s.chip, assignees.length === 0 && s.chipActive]}
-            onPress={() => handleSetAssignee(null)}
-          >
-            <Text style={[s.chipText, assignees.length === 0 && s.chipTextActive]}>Todos</Text>
-          </TouchableOpacity>
-          {members.map(m => (
-            <TouchableOpacity
-              key={m.id}
-              style={[s.chip, assignees.includes(m.id) && s.chipActive]}
-              onPress={() => handleSetAssignee(assignees.includes(m.id) ? null : m.id)}
-            >
-              <Text style={[s.chipText, assignees.includes(m.id) && s.chipTextActive]} numberOfLines={1}>
-                {m.name.split(' ')[0]}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        {members.length === 0 && (
-          <Text style={s.hint}>Sincronizá para ver el listado de personas.</Text>
-        )}
-
-        <Text style={[Typography.label, { marginBottom: 10, marginTop: 16 }]}>Talla</Text>
+        <Text style={[Typography.label, { marginBottom: 10 }]}>Talla</Text>
         <View style={s.chipRow}>
           {([null, ...TALLA_OPTIONS] as const).map(t => (
             <TouchableOpacity
