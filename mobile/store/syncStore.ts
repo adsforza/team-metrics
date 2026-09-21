@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LAST_SYNCED_KEY, performSync, SyncError } from '../lib/sync';
 import { isServerReachable, triggerReclassify } from '../lib/api';
 import { getDirectConfig } from '../lib/directConfig';
-import { directSync, directReclassify } from '../lib/directSync';
+import { directSync, directReclassify, recomputeSnapshots } from '../lib/directSync';
 import { getDb } from '../lib/db';
 import { dateRangeFor, useFilterStore } from './filterStore';
 import type { SyncStatus } from '../lib/syncStatus';
@@ -28,6 +28,7 @@ interface SyncState {
   loadLastSynced: () => Promise<void>;
   sync: () => Promise<void>;
   reclassify: () => Promise<ReclassifyOutcome>;
+  recompute: () => Promise<void>;
 }
 
 export const useSyncStore = create<SyncState>((set, get) => ({
@@ -48,9 +49,13 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     if (get().loading) return;
     set({ loading: true, errors: [] });
 
-    // TODO(tarea posterior): performSync/directSync todavía esperan un `assignee`
-    // único; hasta que se actualicen para aceptar la lista, tomamos el primero
-    // (hoy la UI sólo permite elegir una persona a la vez, así que es equivalente).
+    // Limitación conocida y documentada del camino de red (server / directSync):
+    // `performSync` pega contra endpoints HTTP que sólo aceptan un `?assignee=`
+    // único, así que acá tomamos el primero elegido (hoy la UI de multi-select
+    // filtra sólo el snapshot local; un sync completo contra Jira/servidor sigue
+    // trayendo datos "de una sola persona" hasta que esos endpoints acepten lista).
+    // El camino 100% local (`recompute`, más abajo) NO tiene esta limitación:
+    // pasa la lista completa al core.
     const { timeRange, assignees } = useFilterStore.getState();
     const assignee = assignees[0] ?? null;
     const range = dateRangeFor(timeRange);
@@ -73,7 +78,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         result = await directSync(db, {
           boards: cfg.boards,
           geminiKey: cfg.geminiKey,
-          filters: { from: range.from, to: range.to, assignee },
+          filters: { from: range.from, to: range.to, assignees: assignee ? [assignee] : undefined },
         }, { onProgress });
         mode = 'direct';
       }
@@ -126,7 +131,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       const result = await directReclassify(db, {
         boards: cfg.boards,
         geminiKey: cfg.geminiKey,
-        filters: { from: range.from, to: range.to, assignee },
+        filters: { from: range.from, to: range.to, assignees: assignee ? [assignee] : undefined },
       }, { onProgress });
       set({
         loading: false,
@@ -139,5 +144,23 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       set({ loading: false, errors: [{ endpoint: 'reclassify', message: String(err) }], progress: null });
       return { mode: 'none' };
     }
+  },
+
+  // Recalcula los snapshots desde el crudo local (SQLite) sin red: usado cuando
+  // sólo cambió el filtro de personas y los datos ya están sincronizados en el
+  // celular. A diferencia de `sync`, pasa la lista completa de `assignees` al
+  // core (no hay bridge de un solo valor acá).
+  recompute: async () => {
+    const { timeRange, assignees } = useFilterStore.getState();
+    const range = dateRangeFor(timeRange);
+    const db = await getDb();
+    const now = new Date();
+    // Store: [] = todos  →  core: undefined = sin filtro. La conversion vive
+    // SOLO aca; pasar [] derecho al core no traeria nada.
+    await recomputeSnapshots(db, {
+      from: range.from, to: range.to,
+      assignees: assignees.length > 0 ? assignees : undefined,
+    }, now, now.toISOString());
+    set({ dataVersion: get().dataVersion + 1 });
   },
 }));

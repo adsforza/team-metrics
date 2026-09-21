@@ -82,13 +82,11 @@ export function computeBundle(
   issues: CoreIssueWorkload[],
   transitions: CoreTransition[],
   members: CoreMember[],
-  filters: { from?: string; to?: string; assignee?: string | null },
+  filters: { from?: string; to?: string; assignees?: string[] },
   now: Date = new Date(),
   boards: { id: number; name: string }[] = [],
 ): SnapshotBundle {
-  // El core ya no lee `assignee`. Traducir aca, una vez: pasar el campo viejo
-  // compila (sigue siendo alias deprecado) pero no filtra nada.
-  const assignees = filters.assignee ? [filters.assignee] : undefined;
+  const { assignees } = filters;
   const params: CoreFilter = { from: filters.from, to: filters.to, assignees };
 
   const weeks = getLastNMondays(6, now);
@@ -136,7 +134,7 @@ export interface DirectSyncResult {
 export interface DirectSyncConfig {
   boards: JiraConfig[];
   geminiKey: string;
-  filters: { from?: string; to?: string; assignee?: string | null };
+  filters: { from?: string; to?: string; assignees?: string[] };
 }
 
 export interface DirectSyncDeps {
@@ -204,7 +202,9 @@ async function classifyAllPending(
 }
 
 // Recalcula todos los snapshots desde los datos crudos locales y los persiste.
-async function recomputeSnapshots(
+// Exportada para que `useSyncStore().recompute()` la use directamente: recalcula
+// desde SQLite sin tocar la red (a diferencia de `directSync`, que primero baja de Jira).
+export async function recomputeSnapshots(
   db: SQLite.SQLiteDatabase,
   filters: DirectSyncConfig['filters'],
   now: Date,

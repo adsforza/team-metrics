@@ -80,7 +80,7 @@ describe('syncStore.sync', () => {
     expect(configArg).toEqual({
       boards: cfg.boards,
       geminiKey: cfg.geminiKey,
-      filters: { from: expect.any(String), to: expect.any(String), assignee: 'user-1' },
+      filters: { from: expect.any(String), to: expect.any(String), assignees: ['user-1'] },
     });
     expect(s.lastSyncMode).toBe('direct');
     expect(s.lastSyncStatus).toBe('ok');
