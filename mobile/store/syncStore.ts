@@ -4,7 +4,7 @@ import { LAST_SYNCED_KEY, performSync, SyncError } from '../lib/sync';
 import { isServerReachable, triggerReclassify } from '../lib/api';
 import { getDirectConfig } from '../lib/directConfig';
 import { directSync, directReclassify, recomputeSnapshots } from '../lib/directSync';
-import { getDb } from '../lib/db';
+import { getDb, loadCoreIssues } from '../lib/db';
 import { dateRangeFor, useFilterStore } from './filterStore';
 import type { SyncStatus } from '../lib/syncStatus';
 import type { SyncProgress } from '../lib/progress';
@@ -31,6 +31,18 @@ interface SyncState {
   recompute: () => Promise<void>;
 }
 
+// Generacion del ultimo `recompute()` pedido. Vive fuera del store porque es
+// control de concurrencia, no estado de UI: nadie tiene que re-renderizar por esto.
+let recomputeGen = 0;
+
+// Convencion store -> core, en un solo lugar:
+//   store `assignees: []`  = "todos"      (no hay filtro elegido)
+//   core  `assignees: []`  = "no matchea nada"
+// Por eso la lista vacia viaja al core como `undefined`. Cada accion la calcula
+// una vez arriba y la reusa; no hay otra forma de traducir esto en el store.
+const toCoreAssignees = (assignees: string[]): string[] | undefined =>
+  assignees.length > 0 ? assignees : undefined;
+
 export const useSyncStore = create<SyncState>((set, get) => ({
   loading: false,
   lastSyncedAt: null,
@@ -49,15 +61,15 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     if (get().loading) return;
     set({ loading: true, errors: [] });
 
-    // Limitación conocida y documentada del camino de red (server / directSync):
-    // `performSync` pega contra endpoints HTTP que sólo aceptan un `?assignee=`
-    // único, así que acá tomamos el primero elegido (hoy la UI de multi-select
-    // filtra sólo el snapshot local; un sync completo contra Jira/servidor sigue
-    // trayendo datos "de una sola persona" hasta que esos endpoints acepten lista).
-    // El camino 100% local (`recompute`, más abajo) NO tiene esta limitación:
-    // pasa la lista completa al core.
     const { timeRange, assignees } = useFilterStore.getState();
+    // Los endpoints HTTP del server aceptan un solo `?assignee=`, asi que para ese
+    // camino mandamos el primero elegido. El bundle que devuelven queda truncado si
+    // habia varias personas: por eso al final de la accion recalculamos local (ver abajo).
     const assignee = assignees[0] ?? null;
+    // El camino direct NO tiene esa limitacion y no debe truncar: `fetchBoardIssues`
+    // baja por proyecto y fecha (nunca por persona) y `config.filters` se usa solo
+    // dentro de `recomputeSnapshots`, o sea filtrado puramente local.
+    const coreAssignees = toCoreAssignees(assignees);
     const range = dateRangeFor(timeRange);
     const onProgress = (p: SyncProgress) => set({ progress: p });
 
@@ -78,7 +90,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         result = await directSync(db, {
           boards: cfg.boards,
           geminiKey: cfg.geminiKey,
-          filters: { from: range.from, to: range.to, assignees: assignee ? [assignee] : undefined },
+          filters: { from: range.from, to: range.to, assignees: coreAssignees },
         }, { onProgress });
         mode = 'direct';
       }
@@ -94,6 +106,17 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         dataVersion: get().dataVersion + 1,
         progress: null,
       });
+
+      // El server solo filtra por una persona; el bundle que devuelve queda truncado
+      // si hay varias elegidas. Recalculamos local con la lista completa sobre el
+      // crudo que /api/raw acaba de refrescar. (El camino direct ya recibio la lista
+      // entera mas arriba, no necesita esta pasada.)
+      // La guarda `length > 0` es obligatoria: si el celular todavia no bajo el crudo,
+      // recalcular degradaria snapshots buenos del server a datos vacios.
+      if (mode === 'backend' && result.okCount > 0) {
+        const locales = await loadCoreIssues(await getDb());
+        if (locales.length > 0) await get().recompute();
+      }
     } catch (err) {
       set({
         loading: false,
@@ -108,9 +131,10 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     if (get().loading) return { mode: 'none' };
     set({ loading: true, errors: [] });
 
-    // Ver comentario equivalente en `sync()`.
     const { timeRange, assignees } = useFilterStore.getState();
-    const assignee = assignees[0] ?? null;
+    // `directReclassify` es camino local: no baja de Jira, solo clasifica pendientes
+    // y recalcula snapshots. Recibe la lista entera (ver comentario en `sync()`).
+    const coreAssignees = toCoreAssignees(assignees);
     const range = dateRangeFor(timeRange);
     const onProgress = (p: SyncProgress) => set({ progress: p });
 
@@ -131,7 +155,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       const result = await directReclassify(db, {
         boards: cfg.boards,
         geminiKey: cfg.geminiKey,
-        filters: { from: range.from, to: range.to, assignees: assignee ? [assignee] : undefined },
+        filters: { from: range.from, to: range.to, assignees: coreAssignees },
       }, { onProgress });
       set({
         loading: false,
@@ -148,19 +172,25 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
   // Recalcula los snapshots desde el crudo local (SQLite) sin red: usado cuando
   // sólo cambió el filtro de personas y los datos ya están sincronizados en el
-  // celular. A diferencia de `sync`, pasa la lista completa de `assignees` al
-  // core (no hay bridge de un solo valor acá).
+  // celular. No llama al server ni a Jira — es 100% local.
   recompute: async () => {
-    const { timeRange, assignees } = useFilterStore.getState();
-    const range = dateRangeFor(timeRange);
-    const db = await getDb();
-    const now = new Date();
-    // Store: [] = todos  →  core: undefined = sin filtro. La conversion vive
-    // SOLO aca; pasar [] derecho al core no traeria nada.
-    await recomputeSnapshots(db, {
-      from: range.from, to: range.to,
-      assignees: assignees.length > 0 ? assignees : undefined,
-    }, now, now.toISOString());
-    set({ dataVersion: get().dataVersion + 1 });
+    const gen = ++recomputeGen;
+    try {
+      const { timeRange, assignees } = useFilterStore.getState();
+      const coreAssignees = toCoreAssignees(assignees);
+      const range = dateRangeFor(timeRange);
+      const db = await getDb();
+      const now = new Date();
+      await recomputeSnapshots(db, {
+        from: range.from, to: range.to, assignees: coreAssignees,
+      }, now, now.toISOString());
+      // Descartar si arranco otro recompute mientras este corria: sin esto, dos taps
+      // rapidos dejan ganar al que termine ultimo, no al ultimo pedido (cada uno lee
+      // el filtro al arrancar y reescribe el bundle entero).
+      if (gen !== recomputeGen) return;
+      set({ dataVersion: get().dataVersion + 1 });
+    } catch (err) {
+      set({ errors: [{ endpoint: 'recompute', message: String(err) }] });
+    }
   },
 }));

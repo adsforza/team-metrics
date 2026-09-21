@@ -2,22 +2,34 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   getItem: jest.fn().mockResolvedValue(null),
   setItem: jest.fn().mockResolvedValue(undefined),
 }));
-jest.mock('../lib/api', () => ({ isServerReachable: jest.fn() }));
+jest.mock('../lib/api', () => ({ isServerReachable: jest.fn(), triggerReclassify: jest.fn() }));
 jest.mock('../lib/sync', () => ({ performSync: jest.fn() }));
 jest.mock('../lib/directConfig', () => ({ getDirectConfig: jest.fn() }));
-jest.mock('../lib/directSync', () => ({ directSync: jest.fn() }));
-jest.mock('../lib/db', () => ({ getDb: jest.fn().mockResolvedValue({}) }));
+jest.mock('../lib/directSync', () => ({
+  directSync: jest.fn(), directReclassify: jest.fn(), recomputeSnapshots: jest.fn(),
+}));
+jest.mock('../lib/db', () => ({ getDb: jest.fn(), loadCoreIssues: jest.fn() }));
 
 import { isServerReachable } from '../lib/api';
 import { performSync } from '../lib/sync';
 import { getDirectConfig } from '../lib/directConfig';
-import { directSync } from '../lib/directSync';
+import { directSync, directReclassify, recomputeSnapshots } from '../lib/directSync';
+import { getDb, loadCoreIssues } from '../lib/db';
 import { useSyncStore } from '../store/syncStore';
 import { useFilterStore } from '../store/filterStore';
 
-const reset = () => useSyncStore.setState({
-  loading: false, lastSyncedAt: 'PREV', errors: [], dataVersion: 0, lastSyncStatus: null, lastSyncMode: null,
-});
+const reset = () => {
+  useSyncStore.setState({
+    loading: false, lastSyncedAt: 'PREV', errors: [], dataVersion: 0, lastSyncStatus: null, lastSyncMode: null,
+  });
+  // El filtro es un store persistido y global: sin esto, el `setState` de un test
+  // se filtra al siguiente segun el orden de ejecucion.
+  useFilterStore.setState({ assignees: [] });
+  (getDb as jest.Mock).mockResolvedValue({});
+  // Por defecto el celular no tiene crudo local: `sync()` no recalcula.
+  (loadCoreIssues as jest.Mock).mockResolvedValue([]);
+  (recomputeSnapshots as jest.Mock).mockResolvedValue(undefined);
+};
 
 describe('syncStore.sync', () => {
   beforeEach(() => { jest.clearAllMocks(); reset(); });
@@ -106,7 +118,14 @@ describe('syncStore.sync', () => {
     });
     await useSyncStore.getState().sync();
     const s = useSyncStore.getState();
-    expect(performSync).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.any(Function));
+    // El 2do arg es el assignee del camino server: `null` cuando no hay nadie
+    // elegido, que es el default. `expect.anything()` no matchea null, asi que
+    // afirmamos el valor concreto.
+    expect(performSync).toHaveBeenCalledWith(
+      expect.objectContaining({ from: expect.any(String), to: expect.any(String) }),
+      null,
+      expect.any(Function),
+    );
     expect(s.progress).toBe(null);
   });
 });
