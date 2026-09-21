@@ -48,4 +48,12 @@ describe('syncStatusText', () => {
     expect(t).toBeTruthy();
     expect(t).not.toMatch(/16\s*d/);
   });
+
+  it('offline con snapshot reciente pero crudo viejo: la antiguedad tambien sale del crudo', () => {
+    // Fix round 1: la rama offline usaba lastSyncedAt (el snapshot) en vez de
+    // antiguedad (crudo-o-snapshot). Es justo el caso donde mas importa: el
+    // usuario esta viendo datos viejos sin poder actualizarlos.
+    const t = syncStatusText('offline', '2026-09-20T12:00:00Z', 'backend', AHORA, '2026-09-04T12:00:00Z');
+    expect(t).toMatch(/16\s*d/);
+  });
 });
