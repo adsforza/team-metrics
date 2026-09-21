@@ -24,7 +24,11 @@
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-splash-screen",
+      "expo-sqlite",
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "scheme": "teammetrics"
   }
