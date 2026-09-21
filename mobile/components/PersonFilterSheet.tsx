@@ -29,7 +29,11 @@ export function PersonFilterSheet({ visible, members, onClose }: Props) {
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
+      // onRequestClose cubre el boton atras de Android; onDismiss cubre el gesto
+      // de swipe-down en iOS, que es como se cierra naturalmente una pageSheet.
+      // Sin los dos, cerrar deslizando deja el filtro aplicado sin recalcular.
       onRequestClose={handleDone}
+      onDismiss={handleDone}
     >
       <View style={s.root}>
         <View style={s.header}>
