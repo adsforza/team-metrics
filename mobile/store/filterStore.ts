@@ -18,27 +18,45 @@ export function dateRangeFor(range: TimeRange): { from: string; to: string } {
 }
 
 interface FilterState {
-  assignee: string | null;
+  assignees: string[];          // [] = todos (OJO: el core usa la convencion opuesta)
   talla: Talla | null;
   timeRange: TimeRange;
-  setAssignee: (a: string | null) => void;
+  setAssignees: (ids: string[]) => void;
+  toggleAssignee: (id: string) => void;
+  clearAssignees: () => void;
   setTalla: (t: Talla | null) => void;
   setTimeRange: (r: TimeRange) => void;
+}
+
+// v0 guardaba `assignee: string | null`. Sin esto, un celular ya instalado abre
+// con assignees undefined y rompe al iterarlo.
+export function migrateFilters(persisted: any, version: number): any {
+  if (version >= 1) return persisted;
+  const { assignee, ...rest } = persisted ?? {};
+  return { ...rest, assignees: assignee ? [assignee] : [] };
 }
 
 export const useFilterStore = create<FilterState>()(
   persist(
     (set) => ({
-      assignee: null,
+      assignees: [],
       talla: null,
       timeRange: '30d',
-      setAssignee: (assignee) => set({ assignee }),
+      setAssignees: (assignees) => set({ assignees }),
+      toggleAssignee: (id) => set(s => ({
+        assignees: s.assignees.includes(id)
+          ? s.assignees.filter(a => a !== id)
+          : [...s.assignees, id],
+      })),
+      clearAssignees: () => set({ assignees: [] }),
       setTalla: (talla) => set({ talla }),
       setTimeRange: (timeRange) => set({ timeRange }),
     }),
     {
       name: 'tm-filters',
       storage: createJSONStorage(() => AsyncStorage),
+      version: 1,
+      migrate: migrateFilters,
     }
   )
 );

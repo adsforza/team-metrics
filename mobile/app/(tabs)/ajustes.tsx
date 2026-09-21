@@ -17,10 +17,12 @@ export default function AjustesScreen() {
   const [dc, setDc] = useState<Partial<DirectConfigFields>>({});
   const [showSecrets, setShowSecrets] = useState(false);
   const { sync, reclassify, loading, lastSyncedAt, progress } = useSyncStore();
-  const { assignee, talla, setAssignee, setTalla } = useFilterStore();
+  const { assignees, talla, setAssignees, setTalla } = useFilterStore();
 
+  // Selección única por ahora (el chip UI multi-persona es una tarea posterior):
+  // elegir "Todos" vacía la lista, elegir una persona la vuelve la única seleccionada.
   const handleSetAssignee = (id: string | null) => {
-    setAssignee(id);
+    setAssignees(id ? [id] : []);
     sync();
   };
   const [members, setMembers] = useState<{ id: string; name: string }[]>([]);
@@ -297,18 +299,18 @@ export default function AjustesScreen() {
         <Text style={[Typography.label, { marginBottom: 10 }]}>Persona</Text>
         <View style={s.chipRow}>
           <TouchableOpacity
-            style={[s.chip, assignee === null && s.chipActive]}
+            style={[s.chip, assignees.length === 0 && s.chipActive]}
             onPress={() => handleSetAssignee(null)}
           >
-            <Text style={[s.chipText, assignee === null && s.chipTextActive]}>Todos</Text>
+            <Text style={[s.chipText, assignees.length === 0 && s.chipTextActive]}>Todos</Text>
           </TouchableOpacity>
           {members.map(m => (
             <TouchableOpacity
               key={m.id}
-              style={[s.chip, assignee === m.id && s.chipActive]}
-              onPress={() => handleSetAssignee(assignee === m.id ? null : m.id)}
+              style={[s.chip, assignees.includes(m.id) && s.chipActive]}
+              onPress={() => handleSetAssignee(assignees.includes(m.id) ? null : m.id)}
             >
-              <Text style={[s.chipText, assignee === m.id && s.chipTextActive]} numberOfLines={1}>
+              <Text style={[s.chipText, assignees.includes(m.id) && s.chipTextActive]} numberOfLines={1}>
                 {m.name.split(' ')[0]}
               </Text>
             </TouchableOpacity>

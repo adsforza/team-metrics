@@ -48,7 +48,11 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     if (get().loading) return;
     set({ loading: true, errors: [] });
 
-    const { timeRange, assignee } = useFilterStore.getState();
+    // TODO(tarea posterior): performSync/directSync todavía esperan un `assignee`
+    // único; hasta que se actualicen para aceptar la lista, tomamos el primero
+    // (hoy la UI sólo permite elegir una persona a la vez, así que es equivalente).
+    const { timeRange, assignees } = useFilterStore.getState();
+    const assignee = assignees[0] ?? null;
     const range = dateRangeFor(timeRange);
     const onProgress = (p: SyncProgress) => set({ progress: p });
 
@@ -99,7 +103,9 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     if (get().loading) return { mode: 'none' };
     set({ loading: true, errors: [] });
 
-    const { timeRange, assignee } = useFilterStore.getState();
+    // Ver comentario equivalente en `sync()`.
+    const { timeRange, assignees } = useFilterStore.getState();
+    const assignee = assignees[0] ?? null;
     const range = dateRangeFor(timeRange);
     const onProgress = (p: SyncProgress) => set({ progress: p });
 

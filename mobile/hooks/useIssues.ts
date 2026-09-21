@@ -6,7 +6,7 @@ import type { WipRiskResult, AgingIssue } from '../lib/types';
 
 export function useIssues() {
   const dataVersion = useSyncStore(s => s.dataVersion);
-  const { assignee, talla } = useFilterStore();
+  const { assignees, talla } = useFilterStore();
   const [wipRisk, setWipRisk] = useState<WipRiskResult | null>(null);
   const [aging, setAging] = useState<AgingIssue[]>([]);
   const [memberMap, setMemberMap] = useState<Record<string, string>>({});
@@ -28,18 +28,21 @@ export function useIssues() {
       let filteredRisk = risk;
       let filteredAging = ag;
 
-      if (risk && (assignee || talla)) {
+      // [] = todos (ver comentario en filterStore.ts).
+      const matchesAssignee = (id: string | null) => assignees.length === 0 || (id != null && assignees.includes(id));
+
+      if (risk && (assignees.length > 0 || talla)) {
         filteredRisk = {
           ...risk,
           items: risk.items.filter(i =>
-            (!assignee || i.assignee_id === assignee) &&
+            matchesAssignee(i.assignee_id) &&
             (!talla || i.talla === talla)
           ),
         };
       }
-      if (assignee || talla) {
+      if (assignees.length > 0 || talla) {
         filteredAging = ag.filter(i =>
-          (!assignee || i.assignee_id === assignee) &&
+          matchesAssignee(i.assignee_id) &&
           (!talla || i.talla === talla)
         );
       }
@@ -48,7 +51,7 @@ export function useIssues() {
       setAging(filteredAging);
       setHasData(risk !== null);
     })();
-  }, [dataVersion, assignee, talla]);
+  }, [dataVersion, assignees, talla]);
 
   return { wipRisk, aging, memberMap, hasData };
 }

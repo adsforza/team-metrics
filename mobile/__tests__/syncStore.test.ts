@@ -70,7 +70,7 @@ describe('syncStore.sync', () => {
     const cfg = { boards: [{ boardId: 1 }], geminiKey: 'gk' };
     (getDirectConfig as jest.Mock).mockResolvedValue(cfg);
     (directSync as jest.Mock).mockResolvedValue({ success: true, errors: [], syncedAt: 'NOW', okCount: 3, failCount: 0 });
-    useFilterStore.setState({ assignee: 'user-1' });
+    useFilterStore.setState({ assignees: ['user-1'] });
     await useSyncStore.getState().sync();
     const s = useSyncStore.getState();
     expect(performSync).not.toHaveBeenCalled();
