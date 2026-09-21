@@ -18,9 +18,22 @@ export interface CoreTransition {
   issue_id: string; from_status: string | null; to_status: string; transitioned_at: string;
 }
 export interface CoreMember { id: string; display_name: string; email: string; avatar_url: string | null; }
-export interface CoreFilter { assignee?: string; talla?: string; status?: string; from?: string; to?: string; }
+// `assignee` singular sobrevive como alias deprecado hasta la Task 8: si se
+// eliminara aca, los seis modulos dejarian de compilar y las Tasks 1-3 quedarian
+// commiteadas sobre un arbol roto. Conviven; cada modulo migra en verde.
+export interface CoreFilter {
+  /** @deprecated usar `assignees`. Se elimina en la Task 8. */
+  assignee?: string;
+  assignees?: string[];
+  talla?: string; status?: string; from?: string; to?: string;
+}
 
-export interface FilterParams { assignee?: string; talla?: string; status?: string; from?: string; to?: string; }
+export interface FilterParams {
+  /** @deprecated usar `assignees`. Se elimina en la Task 8. */
+  assignee?: string;
+  assignees?: string[];
+  talla?: string; status?: string; from?: string; to?: string;
+}
 export interface KPIMetrics {
   wip: number; throughput: number;
   cycle_time_p50: number | null; cycle_time_p85: number | null; blocked_count: number;
