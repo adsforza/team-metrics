@@ -8,6 +8,10 @@ const mockDb = new Database(':memory:');
 applySchema(mockDb);
 mockDb.prepare(`INSERT INTO team_members VALUES ('u1','Ana G','ana@t.com',null)`).run();
 mockDb.prepare(`INSERT INTO issues (id, title, description, status, assignee_id, talla, talla_confidence, created_at, updated_at, synced_at, last_transition_at, talla_updated_at) VALUES ('OPS-1','Fix login','desc','In Progress','u1','M',0.9,'2026-05-01T00:00:00Z','2026-05-04T00:00:00Z','2026-06-01T00:00:00Z','2026-05-01T00:00:00Z',NULL)`).run();
+// Segundo assignee: sin esto, filtrar por ?assignee= y no filtrar devuelven lo mismo
+// (todos los issues serian de u1) y el test de abajo pasaria sin probar nada.
+mockDb.prepare(`INSERT INTO team_members VALUES ('u2','Bruno P','bruno@t.com',null)`).run();
+mockDb.prepare(`INSERT INTO issues (id, title, description, status, assignee_id, talla, talla_confidence, created_at, updated_at, synced_at, last_transition_at, talla_updated_at) VALUES ('OPS-2','Fix logout','desc','In Progress','u2','M',0.9,'2026-05-01T00:00:00Z','2026-05-04T00:00:00Z','2026-06-01T00:00:00Z','2026-05-01T00:00:00Z',NULL)`).run();
 
 vi.mock('../db/index', () => ({ getDb: () => mockDb, initDb: () => mockDb }));
 vi.mock('../services/sync', () => ({ startSyncJob: vi.fn(), runSync: vi.fn().mockResolvedValue({ synced_count: 0, classified_count: 0 }) }));
@@ -29,6 +33,14 @@ describe('GET /api/metrics', () => {
     expect(res.body).toHaveProperty('wip');
     expect(res.body).toHaveProperty('throughput');
     expect(res.body).toHaveProperty('cycle_time_p50');
+  });
+
+  it('GET /api/metrics?assignee=u1 sigue filtrando por esa persona', async () => {
+    const res = await request(app).get('/api/metrics?assignee=u1');
+    expect(res.status).toBe(200);
+    const todos = await request(app).get('/api/metrics');
+    // Si el parametro dejara de aplicarse, ambos responderian identico.
+    expect(res.body).not.toEqual(todos.body);
   });
 });
 
@@ -89,7 +101,7 @@ describe('GET /api/metrics/bottleneck', () => {
     expect(res.body).toHaveProperty('lookbackWeeks', 8);
     expect(typeof res.body.total_active).toBe('number');
     expect(Array.isArray(res.body.states)).toBe(true);
-    // The mock DB has 1 issue in 'In Progress' (seeded at top of routes.test.ts)
+    // The mock DB has 2 issues in 'In Progress' (seeded at top of routes.test.ts)
     if (res.body.states.length > 0) {
       const s = res.body.states[0];
       expect(s).toHaveProperty('status');

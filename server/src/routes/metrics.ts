@@ -10,7 +10,12 @@ import type { FilterParams } from '../types';
 const router = Router();
 
 function parseFilters(q: any): FilterParams {
-  return { from: q.from, to: q.to, assignee: q.assignee, talla: q.talla, status: q.status };
+  // La API publica sigue aceptando ?assignee=<id> (el cliente web la usa asi).
+  // El core ahora piensa en listas: se traduce aca, en un solo lugar.
+  return {
+    from: q.from, to: q.to, talla: q.talla, status: q.status,
+    assignees: q.assignee ? [String(q.assignee)] : undefined,
+  };
 }
 
 router.get('/', (req, res, next) => {
