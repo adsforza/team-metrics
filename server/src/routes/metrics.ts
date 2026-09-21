@@ -12,9 +12,14 @@ const router = Router();
 function parseFilters(q: any): FilterParams {
   // La API publica sigue aceptando ?assignee=<id> (el cliente web la usa asi).
   // El core ahora piensa en listas: se traduce aca, en un solo lugar.
+  // typeof === 'string' y no solo truthy: Express entrega un array si el
+  // parametro viene repetido (?assignee=a&assignee=b), y String(array) da
+  // 'a,b' -> un id inexistente que vacia el resultado en vez de ignorarse.
+  // Las otras rutas de este archivo ya usan esta misma guarda.
+  const assignee = typeof q.assignee === 'string' && q.assignee ? q.assignee : undefined;
   return {
     from: q.from, to: q.to, talla: q.talla, status: q.status,
-    assignees: q.assignee ? [String(q.assignee)] : undefined,
+    assignees: assignee ? [assignee] : undefined,
   };
 }
 

@@ -42,6 +42,15 @@ describe('GET /api/metrics', () => {
     // Si el parametro dejara de aplicarse, ambos responderian identico.
     expect(res.body).not.toEqual(todos.body);
   });
+
+  it('un assignee repetido se ignora en vez de vaciar el resultado', async () => {
+    // Express entrega un array; sin guarda, String(['u1','u2']) da 'u1,u2',
+    // un id inexistente que filtraria todo a cero en silencio.
+    const rep = await request(app).get('/api/metrics?assignee=u1&assignee=u2');
+    const todos = await request(app).get('/api/metrics');
+    expect(rep.status).toBe(200);
+    expect(rep.body).toEqual(todos.body);   // se ignora => igual que sin filtro
+  });
 });
 
 describe('GET /api/team', () => {
