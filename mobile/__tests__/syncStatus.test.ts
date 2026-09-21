@@ -33,4 +33,19 @@ describe('syncStatusText', () => {
   test('mode=backend no agrega directo', () => {
     expect(syncStatusText('ok', TWO_H_AGO, 'backend', NOW)).toBe('sync hace 2h');
   });
+
+  // Tests for raw freshness (Task 8)
+  const AHORA = Date.parse('2026-09-20T12:00:00Z');
+
+  it('la antiguedad sale del crudo, no del snapshot', () => {
+    // Snapshot fresco pero crudo viejo: los numeros que se ven son viejos.
+    const t = syncStatusText('ok', '2026-09-20T12:00:00Z', 'backend', AHORA, '2026-09-04T12:00:00Z');
+    expect(t).toMatch(/16\s*d/);
+  });
+
+  it('sin crudo todavia, cae al timestamp del snapshot', () => {
+    const t = syncStatusText('ok', '2026-09-20T12:00:00Z', 'backend', AHORA, undefined);
+    expect(t).toBeTruthy();
+    expect(t).not.toMatch(/16\s*d/);
+  });
 });

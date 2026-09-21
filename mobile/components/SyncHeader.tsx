@@ -1,12 +1,25 @@
+import { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { Colors } from '../lib/theme';
 import { useSyncStore } from '../store/syncStore';
 import { syncStatusText } from '../lib/syncStatus';
+import { getDb, getBoardLastSync } from '../lib/db';
 
 export function SyncHeader() {
   const { sync, loading, lastSyncedAt, lastSyncStatus, lastSyncMode, progress } = useSyncStore();
-  const label = loading && progress ? progress.label : syncStatusText(lastSyncStatus, lastSyncedAt, lastSyncMode);
+  const [rawSyncedAt, setRawSyncedAt] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    getDb()
+      .then(db => getBoardLastSync(db, 0))
+      .then(v => { if (!cancelled) setRawSyncedAt(v); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [lastSyncedAt]);
+
+  const label = loading && progress ? progress.label : syncStatusText(lastSyncStatus, lastSyncedAt, lastSyncMode, Date.now(), rawSyncedAt);
   const offline = lastSyncStatus === 'offline';
   return (
     <View style={s.row}>

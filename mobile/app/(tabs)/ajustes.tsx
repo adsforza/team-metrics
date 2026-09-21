@@ -29,12 +29,18 @@ export default function AjustesScreen() {
   const handleSync = async () => {
     await sync();
     const st = useSyncStore.getState();
-    // Sólo alertar cuando el sync REAL (snapshots) fue parcial/offline. Los fallos
-    // best-effort de push de tallas (/api/tallas) o pull de crudo (/api/raw) también
-    // caen en errors[], pero no deben disparar un falso "Sync parcial" si los snapshots
-    // salieron bien (status 'ok').
-    if ((st.lastSyncStatus === 'partial' || st.lastSyncStatus === 'offline') && st.errors.length > 0) {
-      Alert.alert('Sync parcial', `${st.errors.length} endpoint(s) fallaron:\n${st.errors.map(e => `${e.endpoint}: ${e.message}`).join('\n\n')}`);
+    // /api/tallas sigue siendo best-effort de verdad: reintenta solo en el
+    // proximo sync. /api/raw ya NO: de ahi salen todos los numeros, asi que un
+    // fallo tiene que verse.
+    const relevantes = st.errors.filter(e => e.endpoint !== '/api/tallas');
+    if (relevantes.length > 0) {
+      const raw = relevantes.find(e => e.endpoint === '/api/raw');
+      Alert.alert(
+        raw ? 'No se pudieron bajar los datos nuevos' : 'Sync parcial',
+        raw
+          ? 'Los números que ves son los de la última sincronización exitosa.'
+          : `${relevantes.length} endpoint(s) fallaron:\n${relevantes.map(e => `${e.endpoint}: ${e.message}`).join('\n\n')}`
+      );
     }
   };
 

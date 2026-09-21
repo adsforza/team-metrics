@@ -13,6 +13,7 @@ export function syncStatusText(
   lastSyncedAt: string | null,
   mode?: 'backend' | 'direct' | null,
   now: number = Date.now(),
+  rawSyncedAt?: string | null,
 ): string {
   if (status === 'offline') {
     return lastSyncedAt
@@ -21,11 +22,16 @@ export function syncStatusText(
   }
   if (!lastSyncedAt) return '';
 
+  // Los números en pantalla salen del crudo (Task 6), asi que la antigüedad que le
+  // importa al usuario es la de ese crudo, no la del snapshot. Si todavía no hay
+  // crudo bajado, cae al timestamp del snapshot.
+  const antiguedad = rawSyncedAt ?? lastSyncedAt;
+
   let text: string;
   if (status === 'partial') {
-    text = `sync parcial · ${timeAgo(lastSyncedAt, now)}`;
+    text = `sync parcial · ${timeAgo(antiguedad, now)}`;
   } else {
-    text = `sync ${timeAgo(lastSyncedAt, now)}`;
+    text = `sync ${timeAgo(antiguedad, now)}`;
   }
 
   if (mode === 'direct') {

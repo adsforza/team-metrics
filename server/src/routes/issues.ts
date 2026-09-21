@@ -7,10 +7,15 @@ const router = Router();
 router.get('/', (req, res, next) => {
   try {
     const db = getDb();
+    // La API publica sigue aceptando ?assignee=<id> (el cliente web la usa asi); el
+    // core ahora piensa en listas, asi que se traduce aca (mismo criterio que
+    // parseFilters en routes/metrics.ts). typeof === 'string' y no solo truthy:
+    // Express entrega un array si el parametro viene repetido.
+    const assignee = typeof req.query.assignee === 'string' && req.query.assignee ? req.query.assignee : undefined;
     const params: FilterParams = {
       from: req.query.from as string,
       to: req.query.to as string,
-      assignee: req.query.assignee as string,
+      assignees: assignee ? [assignee] : undefined,
       talla: req.query.talla as string,
       status: req.query.status as string,
     };
@@ -18,7 +23,7 @@ router.get('/', (req, res, next) => {
     const conditions: string[] = [];
     const args: any[] = [];
 
-    if (params.assignee) { conditions.push('assignee_id = ?'); args.push(params.assignee); }
+    if (params.assignees && params.assignees.length) { conditions.push('assignee_id = ?'); args.push(params.assignees[0]); }
     if (params.talla) {
       const ts = params.talla.split(',');
       conditions.push(`talla IN (${ts.map(() => '?').join(',')})`);
