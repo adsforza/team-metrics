@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { loadCoreIssues, loadCoreTransitions, loadCoreMembers } from '../lib/db';
+import { loadCoreIssues, loadCoreTransitions, loadCoreMembers, loadMembersByIssueCount } from '../lib/db';
 
 function stubDb(rowsBySql: (sql: string) => any[]) {
   const calls: string[] = [];
@@ -58,9 +58,25 @@ describe('core loaders', () => {
   // `readTeamMemberNames` lee `scorecard_members`, que `recomputeSnapshots` reescribe
   // YA FILTRADA: usarla ahi hace que elegir a una persona deje al selector
   // ofreciendo solo a esa persona (y esconde a quien no pasa `hasAllData`).
-  it('el selector de personas lee el crudo (loadCoreMembers), no el snapshot filtrado', () => {
+  it('el selector de personas lee el crudo, no el snapshot filtrado', () => {
+    // La asercion que protege de verdad es la negativa: da igual QUE loader del
+    // crudo se use -antes `loadCoreMembers`, hoy `loadMembersByIssueCount`- con tal
+    // de que no sea `readTeamMemberNames`. Fijar el nombre positivo hacia que este
+    // test se rompiera al cambiar de loader sin que el bug volviera.
     const src = readFileSync(join(__dirname, '..', 'components', 'DateRangeBar.tsx'), 'utf8');
-    expect(src).toContain('loadCoreMembers');
     expect(src).not.toMatch(/readTeamMemberNames\s*\(/);
+    expect(src).toMatch(/loadCoreMembers|loadMembersByIssueCount/);
+  });
+
+  it('loadMembersByIssueCount ordena por cantidad y no pierde a quien no tiene issues', async () => {
+    const rows = [{ id: 'u1', display_name: 'Ana', issue_count: 10 }];
+    const { db, calls } = stubDb(() => rows);
+    const res = await loadMembersByIssueCount(db);
+    expect(res).toEqual(rows);
+    expect(calls[0]).toContain('FROM team_members');
+    // LEFT JOIN y no INNER: con INNER, quien no tiene issues asignados desaparece
+    // del selector y no se lo puede elegir.
+    expect(calls[0]).toContain('LEFT JOIN issues');
+    expect(calls[0]).toMatch(/ORDER BY issue_count DESC/);
   });
 });

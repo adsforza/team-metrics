@@ -237,6 +237,29 @@ export function loadCoreMembers(db: SQLite.SQLiteDatabase): Promise<CoreMember[]
   );
 }
 
+/**
+ * Miembros ordenados por cantidad de issues, de mayor a menor.
+ *
+ * El selector de personas usa este orden y no el alfabetico: con 40 miembros la
+ * mayoria tiene pocos issues, asi que ordenar por nombre entierra a los relevantes
+ * en el medio de la lista.
+ *
+ * LEFT JOIN y no INNER: quien no tiene ningun issue asignado tiene que seguir
+ * apareciendo (al final), porque se lo puede querer elegir igual. `hasAllData` del
+ * scorecard ya excluye gente y por eso el picker no lee de esa tabla.
+ */
+export function loadMembersByIssueCount(
+  db: SQLite.SQLiteDatabase,
+): Promise<{ id: string; display_name: string; issue_count: number }[]> {
+  return db.getAllAsync(
+    `SELECT m.id, m.display_name, COUNT(i.id) AS issue_count
+       FROM team_members m
+       LEFT JOIN issues i ON i.assignee_id = m.id
+      GROUP BY m.id, m.display_name
+      ORDER BY issue_count DESC, m.display_name ASC`
+  );
+}
+
 // ── Raw Writers ──────────────────────────────────────────────────────────────
 
 export async function upsertRawIssues(db: SQLite.SQLiteDatabase, issues: JiraIssueRaw[]): Promise<void> {
