@@ -243,15 +243,27 @@ describe('computeScorecard', () => {
     it('la fila Equipo agrega solo a las personas elegidas', () => {
       const todos = run(issuesAndTrans, members, params);
       const dos = run(issuesAndTrans, members, { ...params, assignees: ['u1', 'u2'] });
-      // El agregado restringido no puede ser igual al del equipo completo si hay
-      // mas miembros con datos: si lo fuera, el filtro no se estaria aplicando.
-      expect(dos.members.length).toBeLessThan(todos.members.length);
-      expect(dos.team).not.toEqual(todos.team);
+      // Valores concretos y no `not.toEqual`: cada persona aporta 2 issues M
+      // completadas = delivery 4, asi que 3 personas dan 12 y 2 dan 8. Comparar
+      // solo "difieren" pasaria igual si el agregado se calculara mal.
+      expect(todos.members.length).toBe(3);
+      expect(todos.team.delivery.value).toBe(12);
+      expect(dos.members.length).toBe(2);
+      expect(dos.team.delivery.value).toBe(8);
     });
 
     it('sin assignees se comporta como antes: todos los miembros', () => {
       const r = run(issuesAndTrans, members, params);
       expect(r.members.length).toBeGreaterThan(2);
+    });
+
+    it('assignees: [] no matchea a nadie (convencion del core, distinta de undefined)', () => {
+      // `undefined` = sin filtro; `[]` = conjunto vacio => cero personas. Los
+      // otros modulos del core ya se comportan asi (matchesAssignees), este era
+      // el unico que devolvia el equipo entero.
+      const r = run(issuesAndTrans, members, { ...params, assignees: [] });
+      expect(r.members).toEqual([]);
+      expect(r.team.delivery.value).toBe(0);
     });
   });
 });

@@ -281,7 +281,11 @@ export function computeScorecard(
 
   // El filtro de personas restringe QUE filas se muestran; cada una sigue
   // calculandose con sus propios issues.
-  const visibles = params.assignees && params.assignees.length
+  // `!== undefined` y no `&& length`: la convencion del core (ver
+  // `matchesAssignees` en filters.ts) es que `undefined` = sin filtro y `[]` =
+  // no matchea nada. Con `&& length`, `[]` caia en la rama "todos" y mostraba
+  // el equipo entero, justo al reves que los otros modulos.
+  const visibles = params.assignees !== undefined
     ? sortedMembers.filter(m => params.assignees!.includes(m.id))
     : sortedMembers;
 
