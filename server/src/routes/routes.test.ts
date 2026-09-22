@@ -23,6 +23,23 @@ describe('GET /api/issues', () => {
     const res = await request(app).get('/api/issues');
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.map((i: any) => i.id).sort()).toEqual(['OPS-1', 'OPS-2']);
+  });
+
+  it('?assignee=u1 devuelve solo los issues de esa persona', async () => {
+    // La ruta traduce ?assignee=<id> a `assignees: [id]` para el core; sin un test
+    // que pegue aca, romper esa traduccion no lo nota nadie.
+    const res = await request(app).get('/api/issues?assignee=u1');
+    expect(res.status).toBe(200);
+    expect(res.body.map((i: any) => i.id)).toEqual(['OPS-1']);
+  });
+
+  it('un assignee repetido se ignora en vez de vaciar el resultado', async () => {
+    // Express entrega un array cuando el parametro viene repetido; sin la guarda
+    // typeof === 'string', String(['u1','u2']) daria 'u1,u2' y filtraria todo a cero.
+    const res = await request(app).get('/api/issues?assignee=u1&assignee=u2');
+    expect(res.status).toBe(200);
+    expect(res.body.map((i: any) => i.id).sort()).toEqual(['OPS-1', 'OPS-2']);
   });
 });
 
@@ -39,8 +56,11 @@ describe('GET /api/metrics', () => {
     const res = await request(app).get('/api/metrics?assignee=u1');
     expect(res.status).toBe(200);
     const todos = await request(app).get('/api/metrics');
-    // Si el parametro dejara de aplicarse, ambos responderian identico.
-    expect(res.body).not.toEqual(todos.body);
+    // Valores concretos y no `not.toEqual`: hay un issue In Progress por persona,
+    // asi que filtrando se ve 1 y sin filtro 2. "Difieren" pasaria igual aunque el
+    // filtro contara mal.
+    expect(res.body.wip).toBe(1);
+    expect(todos.body.wip).toBe(2);
   });
 
   it('un assignee repetido se ignora en vez de vaciar el resultado', async () => {
