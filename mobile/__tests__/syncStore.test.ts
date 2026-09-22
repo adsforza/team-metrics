@@ -129,3 +129,54 @@ describe('syncStore.sync', () => {
     expect(s.progress).toBe(null);
   });
 });
+
+describe('syncStore.sync — recompute local tras el camino backend', () => {
+  beforeEach(() => { jest.clearAllMocks(); reset(); });
+
+  const okBackend = () => {
+    (isServerReachable as jest.Mock).mockResolvedValue(true);
+    (performSync as jest.Mock).mockResolvedValue({ success: true, errors: [], syncedAt: 'NOW', okCount: 16, failCount: 0 });
+  };
+
+  test('con 0 personas NO recalcula: el bundle del server ya es correcto', async () => {
+    okBackend();
+    (loadCoreIssues as jest.Mock).mockResolvedValue([{ id: 'X' }]);
+    await useSyncStore.getState().sync();
+    expect(recomputeSnapshots).not.toHaveBeenCalled();
+    expect(useSyncStore.getState().lastSyncStatus).toBe('ok');
+  });
+
+  test('con 1 persona NO recalcula: ?assignee= ya la filtro en el server', async () => {
+    okBackend();
+    useFilterStore.setState({ assignees: ['u1'] });
+    (loadCoreIssues as jest.Mock).mockResolvedValue([{ id: 'X' }]);
+    await useSyncStore.getState().sync();
+    expect(recomputeSnapshots).not.toHaveBeenCalled();
+    expect(useSyncStore.getState().lastSyncStatus).toBe('ok');
+  });
+
+  test('con varias personas y crudo local, recalcula con la lista entera', async () => {
+    okBackend();
+    useFilterStore.setState({ assignees: ['u1', 'u2', 'u3'] });
+    (loadCoreIssues as jest.Mock).mockResolvedValue([{ id: 'X' }]);
+    await useSyncStore.getState().sync();
+    expect(recomputeSnapshots).toHaveBeenCalledTimes(1);
+    expect((recomputeSnapshots as jest.Mock).mock.calls[0][1].assignees).toEqual(['u1', 'u2', 'u3']);
+    expect(useSyncStore.getState().lastSyncStatus).toBe('ok');
+  });
+
+  test('con varias personas y SIN crudo local: partial + error que explica que se ve', async () => {
+    // El bundle del server quedo truncado a assignees[0]. Sin crudo no hay repechaje
+    // local, asi que en pantalla hay numeros de UNA persona con la barra diciendo 3.
+    okBackend();
+    useFilterStore.setState({ assignees: ['u1', 'u2', 'u3'] });
+    (loadCoreIssues as jest.Mock).mockResolvedValue([]);
+    await useSyncStore.getState().sync();
+    const s = useSyncStore.getState();
+    expect(recomputeSnapshots).not.toHaveBeenCalled();
+    expect(s.lastSyncStatus).toBe('partial');
+    const err = s.errors.find(e => e.endpoint === 'filtro-personas');
+    expect(err).toBeDefined();
+    expect(err!.message).toContain('varias personas');
+  });
+});

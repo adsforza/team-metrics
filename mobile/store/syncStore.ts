@@ -34,6 +34,8 @@ interface SyncState {
 // Generacion del ultimo `recompute()` pedido. Vive fuera del store porque es
 // control de concurrencia, no estado de UI: nadie tiene que re-renderizar por esto.
 let recomputeGen = 0;
+// Cola de un solo carril para los recomputes: ver el comentario en `recompute()`.
+let recomputeChain: Promise<void> = Promise.resolve();
 
 // Convencion store -> core, en un solo lugar:
 //   store `assignees: []`  = "todos"      (no hay filtro elegido)
@@ -111,11 +113,33 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       // si hay varias elegidas. Recalculamos local con la lista completa sobre el
       // crudo que /api/raw acaba de refrescar. (El camino direct ya recibio la lista
       // entera mas arriba, no necesita esta pasada.)
-      // La guarda `length > 0` es obligatoria: si el celular todavia no bajo el crudo,
-      // recalcular degradaria snapshots buenos del server a datos vacios.
-      if (mode === 'backend' && result.okCount > 0) {
+      // `assignees.length > 1` es la condicion exacta: con 0 o 1 persona el bundle
+      // del server YA es correcto, y reemplazarlo por uno calculado sobre el espejo
+      // local (que es un subconjunto del crudo del server) solo puede empeorarlo.
+      if (mode === 'backend' && result.okCount > 0 && assignees.length > 1) {
         const locales = await loadCoreIssues(await getDb());
-        if (locales.length > 0) await get().recompute();
+        if (locales.length > 0) {
+          // La guarda `length > 0` es obligatoria: si el celular todavia no bajo el
+          // crudo, recalcular degradaria snapshots buenos del server a datos vacios.
+          await get().recompute();
+        } else {
+          // Sin crudo local no hay forma de filtrar por varias personas: lo que quedo
+          // en pantalla es el bundle truncado a `assignees[0]`, o sea numeros de UNA
+          // persona mientras la barra dice "N personas". Eso no puede pasar callado.
+          set({
+            lastSyncStatus: 'partial',
+            errors: [
+              ...get().errors,
+              {
+                // Etiqueta propia y no '/api/raw': la alerta de Ajustes tiene un
+                // texto fijo para ese endpoint y se comeria este mensaje.
+                endpoint: 'filtro-personas',
+                message: 'No se pudo filtrar por varias personas: falta bajar los datos locales. '
+                  + `Los numeros que ves son los de una sola de las ${assignees.length} personas elegidas.`,
+              },
+            ],
+          });
+        }
       }
     } catch (err) {
       set({
@@ -175,22 +199,33 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   // celular. No llama al server ni a Jira — es 100% local.
   recompute: async () => {
     const gen = ++recomputeGen;
-    try {
-      const { timeRange, assignees } = useFilterStore.getState();
-      const coreAssignees = toCoreAssignees(assignees);
-      const range = dateRangeFor(timeRange);
-      const db = await getDb();
-      const now = new Date();
-      await recomputeSnapshots(db, {
-        from: range.from, to: range.to, assignees: coreAssignees,
-      }, now, now.toISOString());
-      // Descartar si arranco otro recompute mientras este corria: sin esto, dos taps
-      // rapidos dejan ganar al que termine ultimo, no al ultimo pedido (cada uno lee
-      // el filtro al arrancar y reescribe el bundle entero).
-      if (gen !== recomputeGen) return;
-      set({ dataVersion: get().dataVersion + 1 });
-    } catch (err) {
-      set({ errors: [{ endpoint: 'recompute', message: String(err) }] });
-    }
+    // Se encadenan para que dos taps rapidos no escriban el bundle a la vez: el
+    // chequeo tiene que cubrir la ESCRITURA, no solo el aviso a la UI. Si solo
+    // protegiera el set(), el recompute viejo pisaria SQLite con datos de otro
+    // filtro y la pantalla recien lo mostraria en la proxima relectura.
+    recomputeChain = recomputeChain.then(async () => {
+      if (gen !== recomputeGen) return;   // quedo obsoleto mientras esperaba el turno
+      try {
+        const { timeRange, assignees } = useFilterStore.getState();
+        const coreAssignees = toCoreAssignees(assignees);
+        const range = dateRangeFor(timeRange);
+        const db = await getDb();
+        const now = new Date();
+        await recomputeSnapshots(db, {
+          from: range.from, to: range.to, assignees: coreAssignees,
+        }, now, now.toISOString());
+        set({ dataVersion: get().dataVersion + 1 });
+      } catch (err) {
+        // `partial` ademas del error: `errors[]` solo lo renderiza la alerta de
+        // Ajustes despues de un `sync()`, asi que un recompute fallido quedaba
+        // invisible — la barra diciendo "3 personas" sobre los datos del filtro
+        // anterior, indefinidamente. La cabecera si mira `lastSyncStatus`.
+        set({
+          lastSyncStatus: 'partial',
+          errors: [{ endpoint: 'recompute', message: String(err) }],
+        });
+      }
+    });
+    return recomputeChain;
   },
 }));
