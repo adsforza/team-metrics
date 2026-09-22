@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { loadCoreIssues, loadCoreTransitions, loadCoreMembers } from '../lib/db';
 
 function stubDb(rowsBySql: (sql: string) => any[]) {
@@ -49,5 +51,16 @@ describe('core loaders', () => {
     expect(res).toEqual(rows);
     expect(calls[0]).toContain('FROM team_members');
     expect(calls[0]).toContain('ORDER BY display_name');
+  });
+
+  // Chequeo sobre el fuente porque @testing-library/react-native no corre en este
+  // proyecto y no hay otra forma de fijar de QUE tabla sale la lista del picker.
+  // `readTeamMemberNames` lee `scorecard_members`, que `recomputeSnapshots` reescribe
+  // YA FILTRADA: usarla ahi hace que elegir a una persona deje al selector
+  // ofreciendo solo a esa persona (y esconde a quien no pasa `hasAllData`).
+  it('el selector de personas lee el crudo (loadCoreMembers), no el snapshot filtrado', () => {
+    const src = readFileSync(join(__dirname, '..', 'components', 'DateRangeBar.tsx'), 'utf8');
+    expect(src).toContain('loadCoreMembers');
+    expect(src).not.toMatch(/readTeamMemberNames\s*\(/);
   });
 });

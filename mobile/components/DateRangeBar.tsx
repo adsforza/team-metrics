@@ -4,7 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import { Colors } from '../lib/theme';
 import { useFilterStore, type TimeRange } from '../store/filterStore';
 import { useSyncStore } from '../store/syncStore';
-import { getDb, readTeamMemberNames } from '../lib/db';
+import { getDb, loadCoreMembers } from '../lib/db';
 import { personFilterLabel, type MemberOption } from '../lib/personFilter';
 import { PersonFilterSheet } from './PersonFilterSheet';
 
@@ -18,13 +18,25 @@ const RANGES: { label: string; value: TimeRange }[] = [
 
 export function DateRangeBar() {
   const { timeRange, setTimeRange, assignees } = useFilterStore();
-  const { recompute, loading } = useSyncStore();
+  const { recompute, loading, dataVersion } = useSyncStore();
   const [members, setMembers] = useState<MemberOption[]>([]);
   const [sheetVisible, setSheetVisible] = useState(false);
 
+  // La lista del picker sale de `team_members` (el crudo), NO de
+  // `readTeamMemberNames`, que lee `scorecard_members`: esa tabla la reescribe
+  // `recomputeSnapshots` YA FILTRADA (DELETE + insert de los miembros visibles).
+  // Leerla aca se autoamputa: elegis a una persona -> recompute -> la tabla queda
+  // con esa sola -> el picker solo la ofrece a ella y no podes agregar a nadie mas
+  // sin volver a "Todos". Ademas `scorecard_members` ya paso por `hasAllData`, asi
+  // que quien no tiene datos suficientes desapareceria del selector.
+  // Depende de `dataVersion` (y no `[]`) para recargarse tras cada sync: en una
+  // instalacion nueva la tabla arranca vacia y el sheet quedaria vacio hasta remontar.
   useEffect(() => {
-    getDb().then(db => readTeamMemberNames(db)).then(setMembers).catch(console.error);
-  }, []);
+    getDb()
+      .then(db => loadCoreMembers(db))
+      .then(rows => setMembers(rows.map(m => ({ id: m.id, name: m.display_name }))))
+      .catch(console.error);
+  }, [dataVersion]);
 
   const handleSelect = (range: TimeRange) => {
     if (range === timeRange) return;
