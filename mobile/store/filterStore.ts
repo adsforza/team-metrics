@@ -31,6 +31,11 @@ interface FilterState {
 // v0 guardaba `assignee: string | null`. Sin esto, un celular ya instalado abre
 // con assignees undefined y rompe al iterarlo.
 export function migrateFilters(persisted: any, version: number): any {
+  // Guarda por forma, antes que por numero de version: un estado ya migrado puede
+  // volver etiquetado v0 (rollback a una build vieja, reinstalacion sobre el mismo
+  // AsyncStorage). Sin esto, la migracion se aplicaria de nuevo, `assignee` no
+  // existiria y la lista de personas se perderia entera.
+  if (Array.isArray(persisted?.assignees)) return persisted;
   if (version >= 1) return persisted;
   const { assignee, ...rest } = persisted ?? {};
   return { ...rest, assignees: assignee ? [assignee] : [] };

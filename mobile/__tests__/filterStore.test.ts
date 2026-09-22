@@ -28,4 +28,18 @@ describe('migrateFilters', () => {
     const nuevo = { assignees: ['u1', 'u2'], talla: null, timeRange: '30d' };
     expect(migrateFilters(nuevo, 1)).toMatchObject({ assignees: ['u1', 'u2'] });
   });
+
+  it('un estado ya migrado etiquetado v0 conserva la lista', () => {
+    // Pasa de verdad: rollback a una build vieja o reinstalacion sobre el mismo
+    // AsyncStorage dejan version 0 con la forma nueva. Sin la guarda por forma, el
+    // destructuring de `assignee` (inexistente) devolvia [] y borraba el filtro.
+    const nuevo = { assignees: ['u1', 'u2'], talla: 'M', timeRange: '90d' };
+    const out = migrateFilters(nuevo, 0);
+    expect(out.assignees).toEqual(['u1', 'u2']);
+    expect(out.talla).toBe('M');
+  });
+
+  it('persisted undefined no explota', () => {
+    expect(migrateFilters(undefined, 0)).toMatchObject({ assignees: [] });
+  });
 });
